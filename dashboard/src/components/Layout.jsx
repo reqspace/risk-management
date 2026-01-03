@@ -8,7 +8,8 @@ import {
   Menu,
   X,
   FolderKanban,
-  ChevronLeft
+  ChevronLeft,
+  Settings
 } from 'lucide-react'
 
 // Brand Colors (customize during setup)
@@ -35,6 +36,7 @@ export default function Layout({ children }) {
         { name: 'All Risks', href: '/risks', icon: AlertTriangle },
         { name: 'All Tasks', href: '/tasks', icon: CheckSquare },
         { name: 'Reports', href: '/reports', icon: FileText },
+        { name: 'Settings', href: '/settings', icon: Settings },
       ]
 
   useEffect(() => {
@@ -121,7 +123,7 @@ export default function Layout({ children }) {
         {/* Footer */}
         <div className="absolute bottom-0 left-0 right-0 p-4 text-center border-t border-slate-700">
           <p className="text-xs text-slate-500">Risk Management</p>
-          <p className="text-xs text-slate-600 mt-1">v1.0.2</p>
+          <p className="text-xs text-slate-600 mt-1">v1.0.3</p>
         </div>
       </div>
 

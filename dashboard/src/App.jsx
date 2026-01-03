@@ -5,6 +5,7 @@ import Dashboard from './pages/Dashboard'
 import RiskRegister from './pages/RiskRegister'
 import Tasks from './pages/Tasks'
 import Reports from './pages/Reports'
+import Settings from './pages/Settings'
 
 function App() {
   return (
@@ -12,6 +13,7 @@ function App() {
       <Layout>
         <Routes>
           <Route path="/" element={<Portfolio />} />
+          <Route path="/settings" element={<Settings />} />
           <Route path="/project/:projectCode" element={<Dashboard />} />
           <Route path="/project/:projectCode/risks" element={<RiskRegister />} />
           <Route path="/project/:projectCode/tasks" element={<Tasks />} />

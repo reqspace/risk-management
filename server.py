@@ -171,6 +171,136 @@ def health_check():
     return jsonify({"status": "healthy", "service": "risk-management-system"})
 
 
+@app.route('/api/settings', methods=['GET'])
+def get_settings():
+    """Get current settings (masked passwords)."""
+    settings = {
+        'ANTHROPIC_API_KEY': mask_key(os.getenv('ANTHROPIC_API_KEY', '')),
+        'PROJECT_NAMES': os.getenv('PROJECT_NAMES', ''),
+        'NGROK_AUTH_TOKEN': mask_key(os.getenv('NGROK_AUTH_TOKEN', '')),
+        'SMTP_SERVER': os.getenv('SMTP_SERVER', 'smtp.office365.com'),
+        'SMTP_PORT': os.getenv('SMTP_PORT', '587'),
+        'EMAIL_FROM': os.getenv('EMAIL_FROM', ''),
+        'EMAIL_TO': os.getenv('EMAIL_TO', ''),
+        'EMAIL_PASSWORD': mask_key(os.getenv('EMAIL_PASSWORD', '')),
+        'MS_CLIENT_ID': os.getenv('MS_CLIENT_ID', ''),
+        'MS_TENANT_ID': os.getenv('MS_TENANT_ID', ''),
+        'MS_CLIENT_SECRET': mask_key(os.getenv('MS_CLIENT_SECRET', '')),
+        'MS_USER_EMAIL': os.getenv('MS_USER_EMAIL', ''),
+        'IMAP_SERVER': os.getenv('IMAP_SERVER', 'outlook.office365.com'),
+        'IMAP_PORT': os.getenv('IMAP_PORT', '993'),
+        'IMAP_PASSWORD': mask_key(os.getenv('IMAP_PASSWORD', '')),
+    }
+    return jsonify({"success": True, "settings": settings})
+
+
+def mask_key(value):
+    """Mask sensitive values, showing only last 4 chars."""
+    if not value or len(value) < 8:
+        return '****' if value else ''
+    return '****' + value[-4:]
+
+
+@app.route('/api/settings', methods=['POST'])
+def save_settings():
+    """Save settings to .env file."""
+    data = request.json
+
+    # Get the .env path
+    env_path = os.environ.get('DOTENV_PATH', BASE_PATH / '.env')
+
+    # Read existing .env to preserve values not being updated
+    existing = {}
+    if Path(env_path).exists():
+        with open(env_path, 'r') as f:
+            for line in f:
+                line = line.strip()
+                if line and not line.startswith('#') and '=' in line:
+                    key, value = line.split('=', 1)
+                    existing[key] = value
+
+    # Update with new values (skip masked values)
+    for key, value in data.items():
+        if value and not value.startswith('****'):
+            existing[key] = value
+
+    # Write back to .env
+    env_content = """# Risk Management System Configuration
+# Updated via Settings UI
+
+# Anthropic API Key (required)
+ANTHROPIC_API_KEY={ANTHROPIC_API_KEY}
+
+# Project Names (comma-separated)
+PROJECT_NAMES={PROJECT_NAMES}
+
+# ngrok (for remote access)
+NGROK_AUTH_TOKEN={NGROK_AUTH_TOKEN}
+
+# Email Reports
+SMTP_SERVER={SMTP_SERVER}
+SMTP_PORT={SMTP_PORT}
+EMAIL_FROM={EMAIL_FROM}
+EMAIL_TO={EMAIL_TO}
+EMAIL_PASSWORD={EMAIL_PASSWORD}
+
+# Microsoft Graph API
+MS_CLIENT_ID={MS_CLIENT_ID}
+MS_TENANT_ID={MS_TENANT_ID}
+MS_CLIENT_SECRET={MS_CLIENT_SECRET}
+MS_USER_EMAIL={MS_USER_EMAIL}
+
+# Email Reading (IMAP)
+IMAP_SERVER={IMAP_SERVER}
+IMAP_PORT={IMAP_PORT}
+IMAP_PASSWORD={IMAP_PASSWORD}
+""".format(**{k: existing.get(k, '') for k in [
+        'ANTHROPIC_API_KEY', 'PROJECT_NAMES', 'NGROK_AUTH_TOKEN',
+        'SMTP_SERVER', 'SMTP_PORT', 'EMAIL_FROM', 'EMAIL_TO', 'EMAIL_PASSWORD',
+        'MS_CLIENT_ID', 'MS_TENANT_ID', 'MS_CLIENT_SECRET', 'MS_USER_EMAIL',
+        'IMAP_SERVER', 'IMAP_PORT', 'IMAP_PASSWORD'
+    ]})
+
+    with open(env_path, 'w') as f:
+        f.write(env_content)
+
+    # Reload environment
+    load_dotenv(env_path, override=True)
+
+    # Create project folders if PROJECT_NAMES changed
+    if 'PROJECT_NAMES' in data:
+        create_project_folders(data['PROJECT_NAMES'])
+
+    return jsonify({"success": True, "message": "Settings saved. Restart app for some changes to take effect."})
+
+
+def create_project_folders(project_names_str):
+    """Create folder structure for projects."""
+    if not project_names_str:
+        return
+
+    projects = [p.strip() for p in project_names_str.split(',') if p.strip()]
+
+    # Create 0 - Reports folder
+    reports_folder = BASE_PATH / "0 - Reports"
+    reports_folder.mkdir(parents=True, exist_ok=True)
+
+    # Create numbered project folders
+    for i, project in enumerate(projects, 1):
+        project_folder = BASE_PATH / f"{i} - {project}"
+        project_folder.mkdir(parents=True, exist_ok=True)
+
+        # Create subfolders
+        (project_folder / "1 - Schedules").mkdir(exist_ok=True)
+        (project_folder / "2 - Meetings").mkdir(exist_ok=True)
+        (project_folder / "3 - Deliverables").mkdir(exist_ok=True)
+
+        # Also create Risk_Registers folder for backward compatibility
+        (BASE_PATH / "Risk_Registers" / project).mkdir(parents=True, exist_ok=True)
+
+    print(f"[Settings] Created folder structure for {len(projects)} projects")
+
+
 def extract_text_from_attachment(file_path: Path, extension: str) -> str:
     """Extract text content from attachment based on file type."""
     try:
