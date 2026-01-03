@@ -1,7 +1,7 @@
 """
-Monthly Report Generator for MFI LDES Projects
+Monthly Report Generator for Risk Management
 Generates HTML emails, Word documents, and Excel task exports.
-Uses MFI branding: Cyan #33A9DC, Dark Gray #58595B
+Brand colors: Primary #33A9DC, Secondary #58595B
 """
 
 import os
@@ -27,26 +27,23 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-# MFI Brand Colors
-MFI_CYAN = '#33A9DC'
-MFI_DARK_GRAY = '#58595B'
-MFI_CYAN_RGB = RGBColor(0x33, 0xA9, 0xDC)
-MFI_GRAY_RGB = RGBColor(0x58, 0x59, 0x5B)
+# Brand Colors (customize during setup)
+BRAND_PRIMARY = '#33A9DC'
+BRAND_SECONDARY = '#58595B'
+BRAND_PRIMARY_RGB = RGBColor(0x33, 0xA9, 0xDC)
+BRAND_SECONDARY_RGB = RGBColor(0x58, 0x59, 0x5B)
 
-# Project name mapping
+# Project name mapping - add your projects during setup
 PROJECT_NAMES = {
-    'RH': 'Rams Hill - 4MWh LDES Microgrid',
-    'MCBCP': 'MCB Camp Pendleton - 400MWh Military Installation',
-    'CEC': 'California Energy Commission - LDES Program',
-    'HB': 'Hummingbird Project'
+    # Example: 'PROJECT1': 'Project One Description',
 }
 
 BASE_PATH = Path(__file__).parent.resolve()
-LOGO_PATH = BASE_PATH / 'MFI_Logo.png'
+LOGO_PATH = BASE_PATH / 'logo.png'
 
 
 def get_logo_base64():
-    """Read the MFI logo and return as base64 string."""
+    """Read the logo and return as base64 string."""
     if LOGO_PATH.exists():
         with open(LOGO_PATH, 'rb') as f:
             return base64.b64encode(f.read()).decode('utf-8')
@@ -223,7 +220,7 @@ def generate_executive_summary(project_code, data, health):
 
 
 def generate_html_email(project_code, data, health, report_date=None):
-    """Generate HTML email with embedded MFI logo - matches dashboard grey theme."""
+    """Generate HTML email with embedded logo - matches dashboard grey theme."""
     if report_date is None:
         report_date = datetime.now()
 
@@ -354,7 +351,7 @@ def generate_html_email(project_code, data, health, report_date=None):
             content: '';
             width: 4px;
             height: 18px;
-            background: {MFI_CYAN};
+            background: {BRAND_PRIMARY};
             border-radius: 2px;
         }}
         .health-badge {{
@@ -370,7 +367,7 @@ def generate_html_email(project_code, data, health, report_date=None):
             background: #f8fafc;
             padding: 16px 20px;
             border-radius: 8px;
-            border-left: 4px solid {MFI_CYAN};
+            border-left: 4px solid {BRAND_PRIMARY};
             white-space: pre-line;
             font-size: 14px;
             color: #475569;
@@ -441,7 +438,7 @@ def generate_html_email(project_code, data, health, report_date=None):
             font-size: 12px;
         }}
         .footer a {{
-            color: {MFI_CYAN};
+            color: {BRAND_PRIMARY};
             text-decoration: none;
         }}
     </style>
@@ -451,11 +448,11 @@ def generate_html_email(project_code, data, health, report_date=None):
         <div class="header">
             <div class="header-row">
                 <div>
-                    <h1>LDES Microgrid Status Report</h1>
+                    <h1>Monthly Status Report</h1>
                     <p class="subtitle">{project_name}</p>
                     <p class="date">{report_date.strftime('%B %d, %Y')}</p>
                 </div>
-                {'<img src="data:image/png;base64,' + logo_b64 + '" class="logo" alt="MFI Logo">' if logo_b64 else ''}
+                {'<img src="data:image/png;base64,' + logo_b64 + '" class="logo" alt="Logo">' if logo_b64 else ''}
             </div>
         </div>
 
@@ -647,7 +644,7 @@ def generate_html_email(project_code, data, health, report_date=None):
         </div>
 
         <div class="footer">
-            <p>MFI LDES Risk Management System</p>
+            <p>Risk Management System</p>
             <p>Report generated: ''' + datetime.now().strftime('%Y-%m-%d %H:%M:%S') + '''</p>
         </div>
     </div>
@@ -658,7 +655,7 @@ def generate_html_email(project_code, data, health, report_date=None):
 
 
 def generate_word_document(project_code, data, health, report_date=None):
-    """Generate a Word document report with MFI branding."""
+    """Generate a Word document report with branding."""
     if report_date is None:
         report_date = datetime.now()
 
@@ -685,21 +682,21 @@ def generate_word_document(project_code, data, health, report_date=None):
     title = doc.add_heading('Monthly Status Report', 0)
     title.alignment = WD_ALIGN_PARAGRAPH.CENTER
     for run in title.runs:
-        run.font.color.rgb = MFI_CYAN_RGB
+        run.font.color.rgb = BRAND_PRIMARY_RGB
 
     # Project info
     info = doc.add_paragraph()
     info.alignment = WD_ALIGN_PARAGRAPH.CENTER
     info_run = info.add_run(f'{project_name}\n{report_date.strftime("%B %Y")}')
     info_run.font.size = Pt(14)
-    info_run.font.color.rgb = MFI_GRAY_RGB
+    info_run.font.color.rgb = BRAND_SECONDARY_RGB
 
     doc.add_paragraph()
 
     # Project Health
     health_heading = doc.add_heading('Project Health', level=1)
     for run in health_heading.runs:
-        run.font.color.rgb = MFI_CYAN_RGB
+        run.font.color.rgb = BRAND_PRIMARY_RGB
 
     health_para = doc.add_paragraph()
     health_run = health_para.add_run(f"Status: {health['status']}")
@@ -736,7 +733,7 @@ def generate_word_document(project_code, data, health, report_date=None):
     # Executive Summary
     exec_heading = doc.add_heading('Executive Summary', level=1)
     for run in exec_heading.runs:
-        run.font.color.rgb = MFI_CYAN_RGB
+        run.font.color.rgb = BRAND_PRIMARY_RGB
 
     exec_summary = generate_executive_summary(project_code, data, health)
     doc.add_paragraph(exec_summary)
@@ -744,7 +741,7 @@ def generate_word_document(project_code, data, health, report_date=None):
     # Schedule & Milestones
     schedule_heading = doc.add_heading('Schedule & Milestones', level=1)
     for run in schedule_heading.runs:
-        run.font.color.rgb = MFI_CYAN_RGB
+        run.font.color.rgb = BRAND_PRIMARY_RGB
 
     milestones = data['milestones']
     if milestones:
@@ -771,13 +768,13 @@ def generate_word_document(project_code, data, health, report_date=None):
     # Budget Section (placeholder)
     budget_heading = doc.add_heading('Budget Status', level=1)
     for run in budget_heading.runs:
-        run.font.color.rgb = MFI_CYAN_RGB
+        run.font.color.rgb = BRAND_PRIMARY_RGB
     doc.add_paragraph('Budget tracking is maintained separately. Contact project manager for detailed financial status.')
 
     # Risk Register
     risk_heading = doc.add_heading('Risk Register Summary', level=1)
     for run in risk_heading.runs:
-        run.font.color.rgb = MFI_CYAN_RGB
+        run.font.color.rgb = BRAND_PRIMARY_RGB
 
     risks = data['risks']
     active_risks = [r for r in risks if r.get('Status') in ['Open', 'Active', 'Escalated']]
@@ -806,13 +803,13 @@ def generate_word_document(project_code, data, health, report_date=None):
     # Safety Section
     safety_heading = doc.add_heading('Safety & Compliance', level=1)
     for run in safety_heading.runs:
-        run.font.color.rgb = MFI_CYAN_RGB
+        run.font.color.rgb = BRAND_PRIMARY_RGB
     doc.add_paragraph('No safety incidents reported this period. All work continues in compliance with applicable regulations.')
 
     # Next Steps
     next_heading = doc.add_heading('Next Steps', level=1)
     for run in next_heading.runs:
-        run.font.color.rgb = MFI_CYAN_RGB
+        run.font.color.rgb = BRAND_PRIMARY_RGB
 
     tasks = data['tasks']
     open_tasks = [t for t in tasks if t.get('Status') not in ['Completed', 'Done']]
@@ -824,7 +821,7 @@ def generate_word_document(project_code, data, health, report_date=None):
     doc.add_paragraph()
     attach_heading = doc.add_heading('Attachments', level=1)
     for run in attach_heading.runs:
-        run.font.color.rgb = MFI_CYAN_RGB
+        run.font.color.rgb = BRAND_PRIMARY_RGB
     doc.add_paragraph('• Task List Export (.xlsx)')
     doc.add_paragraph('• Risk Register (.xlsx)')
 
@@ -894,7 +891,7 @@ def send_monthly_report(project_code, recipients, report_date=None, include_atta
     Generate and send the monthly report via email.
 
     Args:
-        project_code: Project code (RH, MCBCP, CEC, etc.)
+        project_code: Project code (configured during setup)
         recipients: Email address or list of addresses
         report_date: Date for the report (defaults to now)
         include_attachments: Whether to include Word doc and Excel exports
@@ -932,7 +929,7 @@ def send_monthly_report(project_code, recipients, report_date=None, include_atta
     msg = MIMEMultipart()
     msg['From'] = sender_email
     msg['To'] = ', '.join(recipients)
-    msg['Subject'] = f'[MFI] Monthly Report - {project_code} - {report_date.strftime("%B %Y")}'
+    msg['Subject'] = f'Monthly Report - {project_code} - {report_date.strftime("%B %Y")}'
 
     msg.attach(MIMEText(html_content, 'html'))
 

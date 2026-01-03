@@ -1382,7 +1382,7 @@ def api_send_report():
             'weekly': 'Weekly Summary',
             'monthly': 'Monthly Executive Report'
         }
-        subject = f"[LDES Risk Management] {title_map.get(report_type, 'Report')}"
+        subject = f"[Risk Management] {title_map.get(report_type, 'Report')}"
         if project and project != 'all':
             subject += f" - {project}"
 
