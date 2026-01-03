@@ -32,8 +32,7 @@
     "extraResources": [
       {
         "from": "python/dist/risk_server",
-        "to": "python",
-        "filter": ["**/*"]
+        "to": "python/risk_server"
       }
     ],
     "mac": {

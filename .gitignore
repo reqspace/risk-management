@@ -33,3 +33,8 @@ ics_files/
 
 # Claude Code
 .claude/
+
+# Electron build artifacts (use GitHub Releases for distribution)
+electron-app/dist/
+electron-app/python/build/
+electron-app/python/dist/

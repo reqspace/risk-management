@@ -2,6 +2,7 @@ const { app, BrowserWindow, dialog, shell } = require('electron');
 const { autoUpdater } = require('electron-updater');
 const log = require('electron-log');
 const path = require('path');
+const fs = require('fs');
 const { spawn } = require('child_process');
 const http = require('http');
 
@@ -12,6 +13,46 @@ autoUpdater.logger = log;
 let mainWindow;
 let pythonProcess;
 const PYTHON_PORT = 5001;
+
+// Get user data directory for storing config and data
+function getUserDataPath() {
+  return app.getPath('userData');
+}
+
+// Check if .env file exists, if not, prompt user to create one
+async function ensureEnvFile() {
+  const userDataPath = getUserDataPath();
+  const envPath = path.join(userDataPath, '.env');
+
+  if (!fs.existsSync(envPath)) {
+    // Copy example env if it exists
+    const exampleEnvPath = app.isPackaged
+      ? path.join(process.resourcesPath, '.env.example')
+      : path.join(__dirname, '..', '..', '.env.example');
+
+    if (fs.existsSync(exampleEnvPath)) {
+      fs.copyFileSync(exampleEnvPath, envPath);
+    } else {
+      // Create minimal .env
+      fs.writeFileSync(envPath, 'ANTHROPIC_API_KEY=\n');
+    }
+
+    // Show setup dialog
+    const result = await dialog.showMessageBox({
+      type: 'info',
+      title: 'First Run Setup',
+      message: 'Welcome to Risk Management!',
+      detail: `Please configure your API key.\n\nConfig file location:\n${envPath}\n\nYou need to add your Anthropic API key to this file.`,
+      buttons: ['Open Config File', 'Continue Anyway']
+    });
+
+    if (result.response === 0) {
+      shell.openPath(envPath);
+    }
+  }
+
+  return envPath;
+}
 
 // Get the path to the Python executable
 function getPythonPath() {
@@ -33,23 +74,37 @@ function getPythonPath() {
 }
 
 // Start the Python backend server
-function startPythonServer() {
+function startPythonServer(envPath) {
   return new Promise((resolve, reject) => {
     const pythonPath = getPythonPath();
+    const userDataPath = getUserDataPath();
+
+    // Environment variables for Python server
+    const pythonEnv = {
+      ...process.env,
+      PORT: PYTHON_PORT.toString(),
+      USER_DATA_PATH: userDataPath,
+      DOTENV_PATH: envPath
+    };
 
     if (pythonPath) {
       // Production: Run bundled executable
       log.info('Starting bundled Python server:', pythonPath);
+      log.info('User data path:', userDataPath);
       pythonProcess = spawn(pythonPath, [], {
-        env: { ...process.env, PORT: PYTHON_PORT.toString() }
+        env: pythonEnv,
+        cwd: userDataPath,
+        stdio: ['ignore', 'pipe', 'pipe'],
+        detached: false
       });
     } else {
       // Development: Run Python script
       const scriptPath = path.join(__dirname, '..', '..', 'server.py');
       log.info('Starting Python server in dev mode:', scriptPath);
       pythonProcess = spawn('python3', [scriptPath], {
-        env: { ...process.env, PORT: PYTHON_PORT.toString() },
-        cwd: path.join(__dirname, '..', '..')
+        env: pythonEnv,
+        cwd: path.join(__dirname, '..', '..'),
+        stdio: ['ignore', 'pipe', 'pipe']
       });
     }
 
@@ -77,9 +132,10 @@ function startPythonServer() {
 
 // Poll until the Python server is responding
 function waitForServer(resolve, reject, attempts = 0) {
-  const maxAttempts = 30;
+  const maxAttempts = 60; // Wait up to 60 seconds for bundled Python to start
 
-  http.get(`http://localhost:${PYTHON_PORT}/health`, (res) => {
+  // Use 127.0.0.1 explicitly to avoid IPv6 resolution issues
+  http.get(`http://127.0.0.1:${PYTHON_PORT}/health`, (res) => {
     if (res.statusCode === 200) {
       log.info('Python server is ready');
       resolve();
@@ -92,9 +148,12 @@ function waitForServer(resolve, reject, attempts = 0) {
 
   function retry() {
     if (attempts < maxAttempts) {
-      setTimeout(() => waitForServer(resolve, reject, attempts + 1), 500);
+      if (attempts % 10 === 0) {
+        log.info(`Waiting for Python server... (attempt ${attempts + 1}/${maxAttempts})`);
+      }
+      setTimeout(() => waitForServer(resolve, reject, attempts + 1), 1000);
     } else {
-      reject(new Error('Python server failed to start'));
+      reject(new Error('Python server failed to start after 60 seconds'));
     }
   }
 }
@@ -187,8 +246,12 @@ autoUpdater.on('error', (err) => {
 // App lifecycle
 app.whenReady().then(async () => {
   try {
+    // Ensure .env file exists (first run setup)
+    const envPath = await ensureEnvFile();
+    log.info('Using env file:', envPath);
+
     // Start Python server first
-    await startPythonServer();
+    await startPythonServer(envPath);
 
     // Then create window
     createWindow();

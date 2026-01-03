@@ -133,7 +133,30 @@ def start_folder_watcher(watch_path, project_code):
     return observer
 
 # Load environment variables
-load_dotenv()
+# Check for DOTENV_PATH from Electron, otherwise use default .env
+dotenv_path = os.environ.get('DOTENV_PATH')
+if dotenv_path and Path(dotenv_path).exists():
+    load_dotenv(dotenv_path)
+    print(f"[Server] Loaded config from: {dotenv_path}")
+else:
+    load_dotenv()
+    print("[Server] Loaded config from default .env")
+
+def get_base_path():
+    """Get the base path for data storage.
+    Uses USER_DATA_PATH from Electron if available, otherwise script directory.
+    """
+    user_data_path = os.environ.get('USER_DATA_PATH')
+    if user_data_path:
+        return Path(user_data_path)
+    return Path(__file__).parent.resolve()
+
+# Initialize base path
+BASE_PATH = get_base_path()
+print(f"[Server] Data directory: {BASE_PATH}")
+
+# Ensure required directories exist
+(BASE_PATH / 'Risk_Registers').mkdir(parents=True, exist_ok=True)
 
 app = Flask(__name__)
 
@@ -343,8 +366,7 @@ def list_projects():
     """List available projects based on existing Risk Register files."""
     from pathlib import Path
 
-    base_path = Path(__file__).parent.resolve()
-    risk_registers_path = base_path / "Risk_Registers"
+    risk_registers_path = BASE_PATH / "Risk_Registers"
 
     projects = []
     if risk_registers_path.exists():
@@ -409,8 +431,7 @@ def read_excel_data(project_code='HB'):
     import openpyxl
     from datetime import datetime
 
-    base_path = Path(__file__).parent.resolve()
-    file_path = base_path / 'Risk_Registers' / f'Risk_Register_{project_code}.xlsx'
+    file_path = BASE_PATH / 'Risk_Registers' / f'Risk_Register_{project_code}.xlsx'
 
     if not file_path.exists():
         return {'risks': [], 'tasks': [], 'updates': []}
@@ -492,8 +513,7 @@ def read_excel_data(project_code='HB'):
 
 def get_all_projects():
     """Get list of all project codes from Risk Register files."""
-    base_path = Path(__file__).parent.resolve()
-    risk_registers_path = base_path / "Risk_Registers"
+    risk_registers_path = BASE_PATH / "Risk_Registers"
     projects = []
     if risk_registers_path.exists():
         for file in risk_registers_path.glob("Risk_Register_*.xlsx"):
@@ -1043,8 +1063,7 @@ def api_get_milestones():
 
 def get_risk_register_path(project_code):
     """Get the path to a project's Risk Register file."""
-    base_path = Path(__file__).parent.resolve()
-    return base_path / 'Risk_Registers' / f'Risk_Register_{project_code}.xlsx'
+    return BASE_PATH / 'Risk_Registers' / f'Risk_Register_{project_code}.xlsx'
 
 
 def generate_report_html(project, report_type):
@@ -1664,13 +1683,14 @@ if __name__ == '__main__':
 ''')
 
     # Start folder watchers for all projects
-    base_path = Path(__file__).parent.resolve()
     observers = []
     for project in get_all_projects():
-        transcripts_path = base_path / project / "Transcripts"
-        if transcripts_path.exists():
-            observer = start_folder_watcher(transcripts_path, project)
-            observers.append(observer)
+        transcripts_path = BASE_PATH / project / "Transcripts"
+        # Create the directory if it doesn't exist
+        transcripts_path.mkdir(parents=True, exist_ok=True)
+        observer = start_folder_watcher(transcripts_path, project)
+        observers.append(observer)
+        print(f"[Folder Watcher] Watching: {transcripts_path}")
 
     # Start scheduler for daily digest at 6:00 AM
     scheduler = BackgroundScheduler()
@@ -1690,8 +1710,12 @@ if __name__ == '__main__':
     atexit.register(lambda: scheduler.shutdown())
 
     try:
-        app.run(host='0.0.0.0', port=port, debug=debug)
+        # use_reloader=False is required for PyInstaller bundles
+        # threaded=True allows handling concurrent requests
+        app.run(host='0.0.0.0', port=port, debug=debug, use_reloader=False, threaded=True)
     finally:
-        observer.stop()
-        observer.join()
+        # Stop all folder watchers
+        for obs in observers:
+            obs.stop()
+            obs.join()
         scheduler.shutdown()
