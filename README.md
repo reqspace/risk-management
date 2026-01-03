@@ -1,119 +1,115 @@
 # Risk Management
 
-Automated risk and task extraction from meetings and emails using AI.
+AI-powered risk and task extraction from meetings and emails.
 
-## Features
+---
 
-- **Automatic Risk Extraction**: Drop meeting transcripts and get risks/tasks automatically identified
-- **Email Processing**: Process email attachments for risks and action items
-- **Real-time Dashboard**: Web-based dashboard showing all projects, risks, and tasks
-- **Daily Digest**: Automated email summaries of project status
-- **Monthly Reports**: Generate formatted reports with attachments
-- **Power Automate Integration**: Connect to Outlook and Teams for seamless automation
+## Quick Start (5 minutes)
 
-## Requirements
+### Step 1: Install Required Software
 
-- Python 3.10+
-- Node.js 18+
-- Claude Code CLI
-- ngrok account (free tier works)
-- Anthropic API key
-- Microsoft 365 (for Power Automate integration)
-
-## Installation
-
-1. Clone this repository:
+**On Mac:**
+1. Install Homebrew (if not installed): https://brew.sh
+2. Open Terminal and run:
    ```bash
-   git clone https://github.com/YOUR_USERNAME/risk-management.git
-   cd risk-management
+   brew install python node git
    ```
 
-2. Open Claude Code in the project folder:
-   ```bash
-   claude
-   ```
+**On Windows:**
+1. Download and install Python: https://python.org/downloads (check "Add to PATH")
+2. Download and install Node.js: https://nodejs.org (LTS version)
+3. Download and install Git: https://git-scm.com/downloads
 
-3. Copy the contents of `SETUP_PROMPT.md` and paste into Claude Code
+---
 
-4. Follow the interactive setup wizard
+### Step 2: Download This Software
 
-## What the Setup Will Ask For
+Open Terminal (Mac) or Command Prompt (Windows) and run:
 
-- Your project names/acronyms (e.g., "Project Alpha, PB, CEC")
-- Your company name and logo
-- Anthropic API key
-- ngrok auth token
-- Email settings for reports
-
-## Quick Start (After Setup)
-
-**Windows:**
 ```bash
-start.bat
+git clone https://github.com/reqspace/risk-management.git
+cd risk-management
 ```
 
-**Mac/Linux:**
+---
+
+### Step 3: Get Your API Key
+
+1. Go to https://console.anthropic.com
+2. Sign up or log in
+3. Go to API Keys → Create Key
+4. Copy the key (starts with `sk-ant-...`)
+
+---
+
+### Step 4: Configure
+
 ```bash
-./start.sh
+cp .env.example .env
 ```
 
-This will:
-- Start the Flask API server
-- Start ngrok tunnel
-- Launch the dashboard
-- Open your browser to the dashboard
-
-## Project Structure
-
+Open `.env` in any text editor and paste your API key:
 ```
-risk-management/
-├── server.py           # Flask API server
-├── process.py          # AI risk extraction engine
-├── daily_digest.py     # Daily email digest
-├── monthly_report.py   # Monthly report generation
-├── email_reader.py     # Email attachment processing
-├── dashboard/          # React dashboard
-│   ├── src/
-│   │   ├── pages/
-│   │   │   ├── Portfolio.jsx
-│   │   │   ├── Dashboard.jsx
-│   │   │   ├── RiskRegister.jsx
-│   │   │   └── Tasks.jsx
-│   │   └── components/
-│   └── public/
-├── Risk_Registers/     # Excel files (created by setup)
-└── {Project}/          # Project folders (created by setup)
-    ├── Transcripts/
-    └── Emails/
+ANTHROPIC_API_KEY=sk-ant-your-key-here
 ```
 
-## Usage
+---
 
-### Processing Transcripts
-Drop `.txt`, `.md`, or `.docx` files into any project's `Transcripts/` folder. The system will automatically:
-1. Extract risks and tasks using AI
-2. Add them to the Risk Register
-3. Log the update
+### Step 5: Run It
 
-### Dashboard
-Access at `http://localhost:3000`:
-- **Portfolio**: Overview of all projects
-- **Risks**: View and filter all risks
-- **Tasks**: View and filter all tasks
-- **Reports**: Generate and send reports
+**Mac:** Double-click `start.command`
 
-### API Endpoints
-- `GET /health` - Health check
-- `POST /process` - Process content for risks/tasks
-- `GET /api/portfolio` - Get all projects summary
-- `GET /api/risks` - Get all risks
-- `GET /api/tasks` - Get all tasks
-- `POST /api/reports/send` - Send report email
+**Windows:** Double-click `start.bat`
+
+Your browser will open to the dashboard automatically.
+
+---
+
+## Need Help Setting Up?
+
+Install Claude Code (AI assistant that can help):
+
+```bash
+npm install -g @anthropic-ai/claude-code
+```
+
+Then in Terminal, navigate to this folder and run:
+
+```bash
+cd risk-management
+claude
+```
+
+Then paste this into Claude:
+
+```
+Help me set up Risk Management. Walk me through configuring my .env file and getting everything running.
+```
+
+Claude will guide you through everything step by step.
+
+---
+
+## How It Works
+
+1. **Drop transcripts** into your project's `Transcripts/` folder
+2. **AI extracts** risks and tasks automatically
+3. **View everything** in the web dashboard
+4. **Get daily emails** with status updates
+
+---
+
+## Troubleshooting
+
+| Problem | Solution |
+|---------|----------|
+| "Python not found" | Reinstall Python, check "Add to PATH" |
+| "npm not found" | Reinstall Node.js |
+| Dashboard won't load | Check that both Terminal windows stay open |
+| API errors | Verify your API key in `.env` |
+
+---
 
 ## Support
 
-For assistance, contact the developer or open an issue on GitHub.
-
-## License
-
-MIT License
+Open an issue: https://github.com/reqspace/risk-management/issues
