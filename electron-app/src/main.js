@@ -33,20 +33,97 @@ async function ensureEnvFile() {
     if (fs.existsSync(exampleEnvPath)) {
       fs.copyFileSync(exampleEnvPath, envPath);
     } else {
-      // Create minimal .env
-      fs.writeFileSync(envPath, 'ANTHROPIC_API_KEY=\n');
+      // Create full .env template
+      const envTemplate = `# Risk Management System Configuration
+
+# ===========================================
+# REQUIRED: Anthropic API Key
+# ===========================================
+# Get yours at: https://console.anthropic.com/
+ANTHROPIC_API_KEY=
+
+# ===========================================
+# REQUIRED: Project Names
+# ===========================================
+# Comma-separated list of your project codes
+# Example: PROJECT_NAMES=ProjectAlpha,ProjectBeta
+PROJECT_NAMES=
+
+# ===========================================
+# OPTIONAL: ngrok (for remote access)
+# ===========================================
+# Get token at: https://dashboard.ngrok.com/
+NGROK_AUTH_TOKEN=
+
+# ===========================================
+# OPTIONAL: Email Reports (Daily Digest)
+# ===========================================
+SMTP_SERVER=smtp.office365.com
+SMTP_PORT=587
+EMAIL_FROM=
+EMAIL_TO=
+EMAIL_PASSWORD=
+
+# ===========================================
+# OPTIONAL: Microsoft Graph API
+# ===========================================
+# For Outlook Calendar integration
+# Setup: Azure Portal > App Registrations
+MS_CLIENT_ID=
+MS_TENANT_ID=
+MS_CLIENT_SECRET=
+MS_USER_EMAIL=
+
+# ===========================================
+# OPTIONAL: Email Reading (IMAP)
+# ===========================================
+# For processing email attachments
+IMAP_SERVER=outlook.office365.com
+IMAP_PORT=993
+IMAP_PASSWORD=
+`;
+      fs.writeFileSync(envPath, envTemplate);
     }
 
-    // Show setup dialog
+    // Show comprehensive setup dialog
+    const setupMessage = `Welcome to Risk Management!
+
+This app needs configuration to work properly.
+
+REQUIRED SETUP:
+1. Anthropic API Key (for AI processing)
+   → Get one at console.anthropic.com
+
+2. Project Names (your project codes)
+   → Example: ProjectAlpha,ProjectBeta
+
+OPTIONAL SETUP:
+3. ngrok Token (for remote access)
+4. Email Settings (for daily digest reports)
+5. Microsoft Graph (for Outlook calendar)
+6. Power Automate (see Install Guide)
+
+Config file location:
+${envPath}
+
+Click "Open Config File" to edit settings.
+Click "Open Install Guide" for detailed instructions.`;
+
     const result = await dialog.showMessageBox({
       type: 'info',
-      title: 'First Run Setup',
+      title: 'First Run Setup - Configuration Required',
       message: 'Welcome to Risk Management!',
-      detail: `Please configure your API key.\n\nConfig file location:\n${envPath}\n\nYou need to add your Anthropic API key to this file.`,
-      buttons: ['Open Config File', 'Continue Anyway']
+      detail: setupMessage,
+      buttons: ['Open Config File', 'Open Install Guide', 'Continue Anyway']
     });
 
     if (result.response === 0) {
+      shell.openPath(envPath);
+    } else if (result.response === 1) {
+      // Open install guide
+      const guideUrl = 'https://github.com/reqspace/risk-management/blob/main/INSTALL_GUIDE.md';
+      shell.openExternal(guideUrl);
+      // Also open the config file
       shell.openPath(envPath);
     }
   }
