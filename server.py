@@ -137,9 +137,9 @@ load_dotenv()
 
 app = Flask(__name__)
 
-# Enable CORS for React dashboard
+# Enable CORS for React dashboard and Electron app
 from flask_cors import CORS
-CORS(app, origins=['http://localhost:3000', 'http://localhost:5173'])
+CORS(app, origins=['http://localhost:3000', 'http://localhost:5173', 'file://', 'null'])
 
 
 @app.route('/health', methods=['GET'])

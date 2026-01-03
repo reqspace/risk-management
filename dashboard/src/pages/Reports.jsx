@@ -1,6 +1,6 @@
 import { useState, useRef } from 'react'
 import { useParams } from 'react-router-dom'
-import { useApi } from '../hooks/useApi'
+import { useApi, API_BASE } from '../hooks/useApi'
 import html2pdf from 'html2pdf.js'
 import {
   FileText,
@@ -153,7 +153,7 @@ export default function Reports() {
     setMessage(null)
 
     try {
-      const response = await fetch(`/api/reports/pdf?project=${project}&type=${reportType}`)
+      const response = await fetch(`${API_BASE}/api/reports/pdf?project=${project}&type=${reportType}`)
       if (!response.ok) throw new Error('Failed to generate PDF')
 
       const blob = await response.blob()
@@ -186,7 +186,7 @@ export default function Reports() {
     setMessage(null)
 
     try {
-      const response = await fetch('/api/reports/send', {
+      const response = await fetch(`${API_BASE}/api/reports/send`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
