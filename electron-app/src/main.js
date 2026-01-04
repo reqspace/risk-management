@@ -1,4 +1,4 @@
-const { app, BrowserWindow, dialog, shell } = require('electron');
+const { app, BrowserWindow, dialog, shell, ipcMain } = require('electron');
 const { autoUpdater } = require('electron-updater');
 const log = require('electron-log');
 const path = require('path');
@@ -14,27 +14,130 @@ let mainWindow;
 let pythonProcess;
 const PYTHON_PORT = 5001;
 
-// Get user data directory for storing config and data
-function getUserDataPath() {
+// Get the app config directory (for storing settings only)
+function getAppConfigPath() {
   return app.getPath('userData');
 }
 
-// Check if .env file exists, if not, prompt user to create one
-async function ensureEnvFile() {
-  const userDataPath = getUserDataPath();
-  const envPath = path.join(userDataPath, '.env');
+// Get the data folder path (user-selectable, can be OneDrive, etc.)
+function getDataFolderPath() {
+  const configPath = path.join(getAppConfigPath(), 'config.json');
+  if (fs.existsSync(configPath)) {
+    try {
+      const config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
+      if (config.dataFolder && fs.existsSync(config.dataFolder)) {
+        return config.dataFolder;
+      }
+    } catch (e) {
+      log.error('Error reading config:', e);
+    }
+  }
+  // Default to userData if no custom folder set
+  return getAppConfigPath();
+}
 
-  if (!fs.existsSync(envPath)) {
-    // Copy example env if it exists
-    const exampleEnvPath = app.isPackaged
-      ? path.join(process.resourcesPath, '.env.example')
-      : path.join(__dirname, '..', '..', '.env.example');
+// Save data folder path to config
+function saveDataFolderPath(folderPath) {
+  const configPath = path.join(getAppConfigPath(), 'config.json');
+  let config = {};
+  if (fs.existsSync(configPath)) {
+    try {
+      config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
+    } catch (e) {}
+  }
+  config.dataFolder = folderPath;
+  fs.writeFileSync(configPath, JSON.stringify(config, null, 2));
+  log.info('Saved data folder path:', folderPath);
+}
 
-    if (fs.existsSync(exampleEnvPath)) {
-      fs.copyFileSync(exampleEnvPath, envPath);
+// Check if this is the first run
+function isFirstRun() {
+  const configPath = path.join(getAppConfigPath(), 'config.json');
+  return !fs.existsSync(configPath);
+}
+
+// Run the first-time setup wizard
+async function runSetupWizard() {
+  // Step 1: Welcome and explain what we need
+  const welcomeResult = await dialog.showMessageBox({
+    type: 'info',
+    title: 'Welcome to Risk Management!',
+    message: 'First-Time Setup',
+    detail: `This wizard will help you set up the Risk Management app.
+
+You'll need to:
+1. Choose where to store your data files
+   (You can use OneDrive, Dropbox, or any synced folder!)
+
+2. Add your Anthropic API key
+   (Get one free at console.anthropic.com)
+
+3. Configure your project names
+
+4. (Optional) Set up integrations
+
+Click "Start Setup" to begin.`,
+    buttons: ['Start Setup', 'Quit']
+  });
+
+  if (welcomeResult.response === 1) {
+    app.quit();
+    return null;
+  }
+
+  // Step 2: Choose data folder
+  const defaultFolder = path.join(app.getPath('home'), 'Risk Management');
+  const folderResult = await dialog.showMessageBox({
+    type: 'question',
+    title: 'Step 1: Choose Data Location',
+    message: 'Where should we store your data?',
+    detail: `Your risk registers, reports, and project files will be stored here.
+
+TIP: Choose a OneDrive or Dropbox folder to automatically sync your data across devices!
+
+Default location:
+${defaultFolder}`,
+    buttons: ['Browse for Folder...', 'Use Default Location', 'Cancel Setup']
+  });
+
+  let dataFolder;
+  if (folderResult.response === 2) {
+    app.quit();
+    return null;
+  } else if (folderResult.response === 0) {
+    // User wants to browse
+    const browseResult = await dialog.showOpenDialog({
+      title: 'Select Data Folder',
+      defaultPath: app.getPath('home'),
+      properties: ['openDirectory', 'createDirectory'],
+      message: 'Choose a folder for Risk Management data (e.g., OneDrive folder)'
+    });
+
+    if (browseResult.canceled || browseResult.filePaths.length === 0) {
+      // Cancelled, use default
+      dataFolder = defaultFolder;
     } else {
-      // Create full .env template
-      const envTemplate = `# Risk Management System Configuration
+      dataFolder = browseResult.filePaths[0];
+    }
+  } else {
+    // Use default
+    dataFolder = defaultFolder;
+  }
+
+  // Ensure the folder exists
+  if (!fs.existsSync(dataFolder)) {
+    fs.mkdirSync(dataFolder, { recursive: true });
+  }
+
+  // Save the folder path
+  saveDataFolderPath(dataFolder);
+  log.info('Data folder set to:', dataFolder);
+
+  // Step 3: Create .env file in the data folder
+  const envPath = path.join(dataFolder, '.env');
+  if (!fs.existsSync(envPath)) {
+    const envTemplate = `# Risk Management System Configuration
+# Data Location: ${dataFolder}
 
 # ===========================================
 # REQUIRED: Anthropic API Key
@@ -46,7 +149,7 @@ ANTHROPIC_API_KEY=
 # REQUIRED: Project Names
 # ===========================================
 # Comma-separated list of your project codes
-# Example: PROJECT_NAMES=ProjectAlpha,ProjectBeta
+# Example: PROJECT_NAMES=RH,NSD,HERC,BRGO,HB
 PROJECT_NAMES=
 
 # ===========================================
@@ -82,49 +185,55 @@ IMAP_SERVER=outlook.office365.com
 IMAP_PORT=993
 IMAP_PASSWORD=
 `;
-      fs.writeFileSync(envPath, envTemplate);
-    }
+    fs.writeFileSync(envPath, envTemplate);
+  }
 
-    // Show comprehensive setup dialog
-    const setupMessage = `Welcome to Risk Management!
+  // Step 4: Prompt for API key and show next steps
+  const setupComplete = await dialog.showMessageBox({
+    type: 'info',
+    title: 'Step 2: Configure Settings',
+    message: 'Data folder ready!',
+    detail: `Your data will be stored in:
+${dataFolder}
 
-This app needs configuration to work properly.
+NEXT STEPS:
+1. Open the app's Settings page
+2. Enter your Anthropic API key
+3. Add your project names
+4. (Optional) Configure integrations
 
-REQUIRED SETUP:
-1. Anthropic API Key (for AI processing)
-   → Get one at console.anthropic.com
+You can also edit the config file directly if you prefer.`,
+    buttons: ['Open Config File', 'Continue to App']
+  });
 
-2. Project Names (your project codes)
-   → Example: ProjectAlpha,ProjectBeta
+  if (setupComplete.response === 0) {
+    shell.openPath(envPath);
+  }
 
-OPTIONAL SETUP:
-3. ngrok Token (for remote access)
-4. Email Settings (for daily digest reports)
-5. Microsoft Graph (for Outlook calendar)
-6. Power Automate (see Install Guide)
+  return envPath;
+}
 
-Config file location:
-${envPath}
+// Check if .env file exists, if not, run setup wizard
+async function ensureEnvFile() {
+  // Check if this is first run
+  if (isFirstRun()) {
+    return await runSetupWizard();
+  }
 
-Click "Open Config File" to edit settings.
-Click "Open Install Guide" for detailed instructions.`;
+  // Get the data folder path
+  const dataFolder = getDataFolderPath();
+  const envPath = path.join(dataFolder, '.env');
 
-    const result = await dialog.showMessageBox({
-      type: 'info',
-      title: 'First Run Setup - Configuration Required',
-      message: 'Welcome to Risk Management!',
-      detail: setupMessage,
-      buttons: ['Open Config File', 'Open Install Guide', 'Continue Anyway']
-    });
-
-    if (result.response === 0) {
-      shell.openPath(envPath);
-    } else if (result.response === 1) {
-      // Open install guide
-      const guideUrl = 'https://github.com/reqspace/risk-management/blob/main/INSTALL_GUIDE.md';
-      shell.openExternal(guideUrl);
-      // Also open the config file
-      shell.openPath(envPath);
+  // If .env doesn't exist in data folder, check app config folder for migration
+  if (!fs.existsSync(envPath)) {
+    const oldEnvPath = path.join(getAppConfigPath(), '.env');
+    if (fs.existsSync(oldEnvPath)) {
+      // Migrate old .env to new location
+      fs.copyFileSync(oldEnvPath, envPath);
+      log.info('Migrated .env from', oldEnvPath, 'to', envPath);
+    } else {
+      // No env file at all, run setup
+      return await runSetupWizard();
     }
   }
 
@@ -154,23 +263,23 @@ function getPythonPath() {
 function startPythonServer(envPath) {
   return new Promise((resolve, reject) => {
     const pythonPath = getPythonPath();
-    const userDataPath = getUserDataPath();
+    const dataFolderPath = getDataFolderPath();
 
     // Environment variables for Python server
     const pythonEnv = {
       ...process.env,
       PORT: PYTHON_PORT.toString(),
-      USER_DATA_PATH: userDataPath,
+      USER_DATA_PATH: dataFolderPath,  // This is the user-selected data folder
       DOTENV_PATH: envPath
     };
 
     if (pythonPath) {
       // Production: Run bundled executable
       log.info('Starting bundled Python server:', pythonPath);
-      log.info('User data path:', userDataPath);
+      log.info('Data folder path:', dataFolderPath);
       pythonProcess = spawn(pythonPath, [], {
         env: pythonEnv,
-        cwd: userDataPath,
+        cwd: dataFolderPath,
         stdio: ['ignore', 'pipe', 'pipe'],
         detached: false
       });

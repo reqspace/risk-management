@@ -196,8 +196,18 @@ export default function Settings() {
             Data Location
           </h3>
           <p className="text-sm text-blue-700 font-mono break-all">{dataPath.path}</p>
-          <p className="text-xs text-blue-600 mt-2">
-            Drop transcript files into project folders under: <span className="font-mono">{dataPath.projects_path}</span>
+          <div className="mt-3 grid grid-cols-1 gap-2 text-xs text-blue-600">
+            <div className="flex items-start gap-2">
+              <span className="font-medium">Project Files:</span>
+              <span className="font-mono break-all">{dataPath.projects_path}</span>
+            </div>
+            <div className="flex items-start gap-2">
+              <span className="font-medium">Reports:</span>
+              <span className="font-mono break-all">{dataPath.reports_path}</span>
+            </div>
+          </div>
+          <p className="text-xs text-blue-500 mt-3 italic">
+            Tip: Drop transcript files (.txt, .docx) into project "Meetings" folders to process them automatically.
           </p>
         </div>
       )}
