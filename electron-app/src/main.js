@@ -5,10 +5,205 @@ const path = require('path');
 const fs = require('fs');
 const { spawn } = require('child_process');
 const http = require('http');
+const { PublicClientApplication } = require('@azure/msal-node');
 
 // Configure logging
 log.transports.file.level = 'info';
 autoUpdater.logger = log;
+
+// Microsoft Auth Configuration
+const MSAL_CONFIG = {
+  auth: {
+    clientId: 'd9260854-0354-44f3-b12a-6aab224803ff',
+    authority: 'https://login.microsoftonline.com/14c97b03-9bb9-44ba-a4a6-e44e181ab35e',
+    redirectUri: 'http://localhost'
+  }
+};
+
+const MSAL_SCOPES = ['User.Read', 'Calendars.ReadWrite', 'Mail.Read', 'Mail.Send'];
+
+let msalClient = null;
+let msalTokenCache = null;
+
+// Initialize MSAL
+function initializeMsal() {
+  msalClient = new PublicClientApplication(MSAL_CONFIG);
+  log.info('MSAL initialized');
+}
+
+// Get cached accounts
+async function getMsalAccounts() {
+  if (!msalClient) return [];
+  const cache = msalClient.getTokenCache();
+  const accounts = await cache.getAllAccounts();
+  return accounts;
+}
+
+// Sign in with Microsoft
+async function signInWithMicrosoft() {
+  if (!msalClient) initializeMsal();
+
+  try {
+    // Try silent auth first if we have cached accounts
+    const accounts = await getMsalAccounts();
+    if (accounts.length > 0) {
+      try {
+        const silentResult = await msalClient.acquireTokenSilent({
+          account: accounts[0],
+          scopes: MSAL_SCOPES
+        });
+        log.info('Silent auth successful for:', silentResult.account.username);
+        return {
+          success: true,
+          account: silentResult.account,
+          accessToken: silentResult.accessToken
+        };
+      } catch (silentError) {
+        log.info('Silent auth failed, will try interactive');
+      }
+    }
+
+    // Interactive auth with device code flow (works well for desktop apps)
+    const deviceCodeRequest = {
+      scopes: MSAL_SCOPES,
+      deviceCodeCallback: (response) => {
+        // Show dialog to user with the code
+        dialog.showMessageBox(mainWindow, {
+          type: 'info',
+          title: 'Sign in with Microsoft',
+          message: 'Sign in required',
+          detail: `To sign in:\n\n1. Go to: ${response.verificationUri}\n2. Enter code: ${response.userCode}\n\nThe code has been copied to your clipboard.`,
+          buttons: ['Open Browser', 'Cancel']
+        }).then((result) => {
+          if (result.response === 0) {
+            // Copy code to clipboard and open browser
+            require('electron').clipboard.writeText(response.userCode);
+            shell.openExternal(response.verificationUri);
+          }
+        });
+      }
+    };
+
+    const result = await msalClient.acquireTokenByDeviceCode(deviceCodeRequest);
+    log.info('Microsoft sign-in successful:', result.account.username);
+
+    // Save tokens to config for Python backend to use
+    await saveMicrosoftTokens(result);
+
+    return {
+      success: true,
+      account: result.account,
+      accessToken: result.accessToken
+    };
+  } catch (error) {
+    log.error('Microsoft sign-in error:', error);
+    return {
+      success: false,
+      error: error.message
+    };
+  }
+}
+
+// Save tokens to config file for Python backend
+async function saveMicrosoftTokens(authResult) {
+  const configPath = path.join(getAppConfigPath(), 'ms-tokens.json');
+  const tokenData = {
+    accessToken: authResult.accessToken,
+    account: {
+      username: authResult.account.username,
+      name: authResult.account.name,
+      homeAccountId: authResult.account.homeAccountId
+    },
+    expiresOn: authResult.expiresOn,
+    scopes: authResult.scopes
+  };
+  fs.writeFileSync(configPath, JSON.stringify(tokenData, null, 2));
+  log.info('Microsoft tokens saved');
+
+  // Also update the .env file with the user email for Graph API
+  const dataFolder = getDataFolderPath();
+  const envPath = path.join(dataFolder, '.env');
+  if (fs.existsSync(envPath)) {
+    let envContent = fs.readFileSync(envPath, 'utf8');
+    // Update MS_USER_EMAIL
+    if (envContent.includes('MS_USER_EMAIL=')) {
+      envContent = envContent.replace(/MS_USER_EMAIL=.*/, `MS_USER_EMAIL=${authResult.account.username}`);
+    } else {
+      envContent += `\nMS_USER_EMAIL=${authResult.account.username}`;
+    }
+    fs.writeFileSync(envPath, envContent);
+  }
+}
+
+// Get current Microsoft account
+async function getMicrosoftAccount() {
+  const configPath = path.join(getAppConfigPath(), 'ms-tokens.json');
+  if (fs.existsSync(configPath)) {
+    try {
+      const tokenData = JSON.parse(fs.readFileSync(configPath, 'utf8'));
+      return {
+        success: true,
+        account: tokenData.account,
+        isExpired: new Date(tokenData.expiresOn) < new Date()
+      };
+    } catch (e) {
+      return { success: false };
+    }
+  }
+  return { success: false };
+}
+
+// Sign out from Microsoft
+async function signOutMicrosoft() {
+  try {
+    // Clear token cache
+    const configPath = path.join(getAppConfigPath(), 'ms-tokens.json');
+    if (fs.existsSync(configPath)) {
+      fs.unlinkSync(configPath);
+    }
+
+    // Clear MSAL cache
+    if (msalClient) {
+      const cache = msalClient.getTokenCache();
+      const accounts = await cache.getAllAccounts();
+      for (const account of accounts) {
+        await cache.removeAccount(account);
+      }
+    }
+
+    log.info('Microsoft sign-out complete');
+    return { success: true };
+  } catch (error) {
+    log.error('Sign-out error:', error);
+    return { success: false, error: error.message };
+  }
+}
+
+// Refresh Microsoft token
+async function refreshMicrosoftToken() {
+  if (!msalClient) initializeMsal();
+
+  try {
+    const accounts = await getMsalAccounts();
+    if (accounts.length === 0) {
+      return { success: false, error: 'No account found' };
+    }
+
+    const result = await msalClient.acquireTokenSilent({
+      account: accounts[0],
+      scopes: MSAL_SCOPES
+    });
+
+    await saveMicrosoftTokens(result);
+    return {
+      success: true,
+      accessToken: result.accessToken
+    };
+  } catch (error) {
+    log.error('Token refresh error:', error);
+    return { success: false, error: error.message };
+  }
+}
 
 let mainWindow;
 let pythonProcess;
@@ -367,7 +562,8 @@ function createWindow() {
     minHeight: 700,
     webPreferences: {
       nodeIntegration: false,
-      contextIsolation: true
+      contextIsolation: true,
+      preload: path.join(__dirname, 'preload.js')
     },
     // Use default title bar for proper Mac window behavior (dragging, minimize, etc.)
     titleBarStyle: 'default',
@@ -444,6 +640,27 @@ autoUpdater.on('update-downloaded', (info) => {
 
 autoUpdater.on('error', (err) => {
   log.error('Auto-updater error:', err);
+});
+
+// IPC Handlers for Microsoft Auth
+ipcMain.handle('microsoft-sign-in', async () => {
+  return await signInWithMicrosoft();
+});
+
+ipcMain.handle('microsoft-sign-out', async () => {
+  return await signOutMicrosoft();
+});
+
+ipcMain.handle('microsoft-get-account', async () => {
+  return await getMicrosoftAccount();
+});
+
+ipcMain.handle('microsoft-refresh-token', async () => {
+  return await refreshMicrosoftToken();
+});
+
+ipcMain.handle('get-app-version', () => {
+  return app.getVersion();
 });
 
 // App lifecycle

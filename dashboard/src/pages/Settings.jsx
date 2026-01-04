@@ -13,14 +13,64 @@ export default function Settings() {
   const [logoPreview, setLogoPreview] = useState(null)
   const [uploadingLogo, setUploadingLogo] = useState(false)
   const [projects, setProjects] = useState([''])
+  const [msAccount, setMsAccount] = useState(null)
+  const [msSigningIn, setMsSigningIn] = useState(false)
   const fileInputRef = useRef(null)
+
+  // Check if running in Electron
+  const isElectron = typeof window !== 'undefined' && window.electronAPI?.isElectron
 
   useEffect(() => {
     fetchSettings()
     fetchDataPath()
     // Try to load existing logo
     setLogoPreview('/logo.png?' + Date.now())
+    // Check Microsoft account status
+    if (isElectron) {
+      checkMicrosoftAccount()
+    }
   }, [])
+
+  // Check if signed in to Microsoft
+  const checkMicrosoftAccount = async () => {
+    try {
+      const result = await window.electronAPI.getMicrosoftAccount()
+      if (result.success) {
+        setMsAccount(result.account)
+      }
+    } catch (err) {
+      console.error('Error checking Microsoft account:', err)
+    }
+  }
+
+  // Sign in with Microsoft
+  const handleMicrosoftSignIn = async () => {
+    setMsSigningIn(true)
+    try {
+      const result = await window.electronAPI.signInWithMicrosoft()
+      if (result.success) {
+        setMsAccount(result.account)
+        setMessage({ type: 'success', text: `Signed in as ${result.account.username}` })
+      } else {
+        setMessage({ type: 'error', text: result.error || 'Sign in failed' })
+      }
+    } catch (err) {
+      setMessage({ type: 'error', text: 'Sign in failed: ' + err.message })
+    } finally {
+      setMsSigningIn(false)
+    }
+  }
+
+  // Sign out from Microsoft
+  const handleMicrosoftSignOut = async () => {
+    try {
+      await window.electronAPI.signOutMicrosoft()
+      setMsAccount(null)
+      setMessage({ type: 'success', text: 'Signed out from Microsoft' })
+    } catch (err) {
+      setMessage({ type: 'error', text: 'Sign out failed: ' + err.message })
+    }
+  }
 
   // Sync projects array with PROJECT_NAMES setting
   useEffect(() => {
@@ -468,63 +518,122 @@ export default function Settings() {
         </div>
       </div>
 
-      {/* Microsoft Graph Settings */}
+      {/* Microsoft Sign In */}
       <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
-        <div className="px-6 py-4 bg-gradient-to-r from-orange-500 to-orange-600 text-white">
+        <div className="px-6 py-4 bg-gradient-to-r from-blue-500 to-blue-600 text-white">
           <h2 className="text-lg font-semibold flex items-center gap-2">
-            <FolderOpen className="h-5 w-5" />
-            Microsoft Graph API (Outlook Calendar)
+            <svg className="h-5 w-5" viewBox="0 0 23 23" fill="currentColor">
+              <path d="M0 0h11v11H0zM12 0h11v11H12zM0 12h11v11H0zM12 12h11v11H12z"/>
+            </svg>
+            Microsoft Account (Calendar & Email)
           </h2>
         </div>
-        <div className="p-6 space-y-4">
-          <div className="flex justify-end">
-            <TestButton service="microsoft" label="Test Microsoft Connection" />
-          </div>
-          <TestResult service="microsoft" />
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Client ID
-                <a href="https://portal.azure.com/#blade/Microsoft_AAD_RegisteredApps/ApplicationsListBlade"
-                   target="_blank" rel="noopener noreferrer" className="ml-2 text-cyan-600 hover:text-cyan-700">
-                  <ExternalLink className="h-3 w-3 inline" /> Azure Portal
-                </a>
-              </label>
-              <input
-                type="text"
-                value={settings.MS_CLIENT_ID || ''}
-                onChange={(e) => handleChange('MS_CLIENT_ID', e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500"
-              />
+        <div className="p-6">
+          {isElectron ? (
+            msAccount ? (
+              // Signed in state
+              <div className="space-y-4">
+                <div className="flex items-center justify-between p-4 bg-green-50 border border-green-200 rounded-lg">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 bg-blue-500 rounded-full flex items-center justify-center text-white font-semibold">
+                      {msAccount.name?.charAt(0) || msAccount.username?.charAt(0) || 'M'}
+                    </div>
+                    <div>
+                      <p className="font-medium text-gray-900">{msAccount.name || 'Microsoft Account'}</p>
+                      <p className="text-sm text-gray-500">{msAccount.username}</p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <CheckCircle className="h-5 w-5 text-green-500" />
+                    <span className="text-sm text-green-700 font-medium">Connected</span>
+                  </div>
+                </div>
+                <div className="flex items-center justify-between">
+                  <p className="text-sm text-gray-600">
+                    Access to: Calendar, Email
+                  </p>
+                  <button
+                    onClick={handleMicrosoftSignOut}
+                    className="px-4 py-2 text-sm text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                  >
+                    Sign Out
+                  </button>
+                </div>
+              </div>
+            ) : (
+              // Not signed in state
+              <div className="space-y-4">
+                <p className="text-gray-600">
+                  Sign in with your Microsoft account to enable calendar integration and email features.
+                </p>
+                <button
+                  onClick={handleMicrosoftSignIn}
+                  disabled={msSigningIn}
+                  className="flex items-center gap-3 px-6 py-3 bg-[#2F2F2F] hover:bg-[#1F1F1F] text-white rounded-lg transition-colors disabled:opacity-50"
+                >
+                  {msSigningIn ? (
+                    <Loader2 className="h-5 w-5 animate-spin" />
+                  ) : (
+                    <svg className="h-5 w-5" viewBox="0 0 23 23" fill="currentColor">
+                      <path d="M0 0h11v11H0zM12 0h11v11H12zM0 12h11v11H0zM12 12h11v11H12z"/>
+                    </svg>
+                  )}
+                  {msSigningIn ? 'Signing in...' : 'Sign in with Microsoft'}
+                </button>
+                <p className="text-xs text-gray-500">
+                  A browser window will open to complete sign-in securely with Microsoft.
+                </p>
+              </div>
+            )
+          ) : (
+            // Not in Electron - show manual config
+            <div className="space-y-4">
+              <div className="p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
+                <p className="text-sm text-yellow-800">
+                  Sign in with Microsoft is only available in the desktop app.
+                  For web usage, configure the settings below manually.
+                </p>
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Client ID</label>
+                  <input
+                    type="text"
+                    value={settings.MS_CLIENT_ID || ''}
+                    onChange={(e) => handleChange('MS_CLIENT_ID', e.target.value)}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Tenant ID</label>
+                  <input
+                    type="text"
+                    value={settings.MS_TENANT_ID || ''}
+                    onChange={(e) => handleChange('MS_TENANT_ID', e.target.value)}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Client Secret</label>
+                  <input
+                    type="password"
+                    value={settings.MS_CLIENT_SECRET || ''}
+                    onChange={(e) => handleChange('MS_CLIENT_SECRET', e.target.value)}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">User Email</label>
+                  <input
+                    type="email"
+                    value={settings.MS_USER_EMAIL || ''}
+                    onChange={(e) => handleChange('MS_USER_EMAIL', e.target.value)}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500"
+                  />
+                </div>
+              </div>
             </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Tenant ID</label>
-              <input
-                type="text"
-                value={settings.MS_TENANT_ID || ''}
-                onChange={(e) => handleChange('MS_TENANT_ID', e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500"
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Client Secret</label>
-              <input
-                type="password"
-                value={settings.MS_CLIENT_SECRET || ''}
-                onChange={(e) => handleChange('MS_CLIENT_SECRET', e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500"
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">User Email</label>
-              <input
-                type="email"
-                value={settings.MS_USER_EMAIL || ''}
-                onChange={(e) => handleChange('MS_USER_EMAIL', e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500"
-              />
-            </div>
-          </div>
+          )}
         </div>
       </div>
 

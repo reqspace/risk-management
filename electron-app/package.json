@@ -1,6 +1,6 @@
 {
   "name": "risk-management",
-  "version": "1.0.6",
+  "version": "1.0.7",
   "description": "AI-powered risk and task extraction from meetings and emails",
   "main": "src/main.js",
   "author": "reqspace",
@@ -40,7 +40,10 @@
       "target": [
         {
           "target": "dmg",
-          "arch": ["x64", "arm64"]
+          "arch": [
+            "x64",
+            "arm64"
+          ]
         }
       ],
       "icon": "build/icon.icns",
@@ -51,7 +54,9 @@
       "target": [
         {
           "target": "nsis",
-          "arch": ["x64"]
+          "arch": [
+            "x64"
+          ]
         }
       ],
       "icon": "build/icon.ico"
@@ -70,8 +75,9 @@
     }
   },
   "dependencies": {
-    "electron-updater": "^6.1.7",
-    "electron-log": "^5.0.1"
+    "@azure/msal-node": "^3.8.4",
+    "electron-log": "^5.0.1",
+    "electron-updater": "^6.1.7"
   },
   "devDependencies": {
     "electron": "^28.1.0",
