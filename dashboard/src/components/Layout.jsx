@@ -16,11 +16,15 @@ import {
 const BRAND_PRIMARY = '#33A9DC'
 const BRAND_SECONDARY = '#58595B'
 
+// API base URL for logo (served from Flask backend)
+const API_BASE = 'http://127.0.0.1:5001'
+
 export default function Layout({ children }) {
   const location = useLocation()
   const { projectCode } = useParams()
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [lastUpdated, setLastUpdated] = useState(null)
+  const [logoUrl, setLogoUrl] = useState(`${API_BASE}/logo.png?t=${Date.now()}`)
 
   const isProjectView = !!projectCode
 
@@ -69,7 +73,7 @@ export default function Layout({ children }) {
       >
         <div className="flex items-center justify-between h-20 px-4 bg-slate-900">
           <Link to="/" className="flex items-center gap-3">
-            <img src="/logo.png" alt="Logo" className="h-12" onError={(e) => e.target.style.display='none'} />
+            <img src={logoUrl} alt="Logo" className="h-12" onError={(e) => e.target.style.display='none'} />
             <div>
               <span className="text-white font-semibold text-sm">Risk Management</span>
               <span className="block text-xs" style={{ color: BRAND_PRIMARY }}>Dashboard</span>
@@ -123,7 +127,7 @@ export default function Layout({ children }) {
         {/* Footer */}
         <div className="absolute bottom-0 left-0 right-0 p-4 text-center border-t border-slate-700">
           <p className="text-xs text-slate-500">Risk Management</p>
-          <p className="text-xs text-slate-600 mt-1">v1.0.7</p>
+          <p className="text-xs text-slate-600 mt-1">v1.0.8</p>
         </div>
       </div>
 
@@ -147,7 +151,7 @@ export default function Layout({ children }) {
               </div>
             </div>
             <div className="flex items-center space-x-4">
-              <img src="/logo.png" alt="Logo" className="h-8 hidden lg:block opacity-90" onError={(e) => e.target.style.display='none'} />
+              <img src={logoUrl} alt="Logo" className="h-8 hidden lg:block opacity-90" onError={(e) => e.target.style.display='none'} />
               <span className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-green-400 bg-green-900/30 rounded-full border border-green-800/30">
                 <span className="w-2 h-2 bg-green-400 rounded-full animate-pulse"></span>
                 System Online
