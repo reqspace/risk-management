@@ -14,6 +14,20 @@ let mainWindow;
 let pythonProcess;
 const PYTHON_PORT = 5001;
 
+// Prevent multiple instances of the app
+const gotTheLock = app.requestSingleInstanceLock();
+if (!gotTheLock) {
+  app.quit();
+} else {
+  // Focus existing window when second instance is launched
+  app.on('second-instance', () => {
+    if (mainWindow) {
+      if (mainWindow.isMinimized()) mainWindow.restore();
+      mainWindow.focus();
+    }
+  });
+}
+
 // Get the app config directory (for storing settings only)
 function getAppConfigPath() {
   return app.getPath('userData');
@@ -355,7 +369,10 @@ function createWindow() {
       nodeIntegration: false,
       contextIsolation: true
     },
-    titleBarStyle: 'hiddenInset',
+    // Use default title bar for proper Mac window behavior (dragging, minimize, etc.)
+    titleBarStyle: 'default',
+    // Add proper window title
+    title: 'Risk Management',
     show: false
   });
 

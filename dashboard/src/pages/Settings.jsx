@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
-import { Save, Key, Mail, Cloud, FolderOpen, ExternalLink, CheckCircle, AlertCircle, RefreshCw, Loader2, Folder, Upload, Image } from 'lucide-react'
+import { Save, Key, Mail, Cloud, FolderOpen, ExternalLink, CheckCircle, AlertCircle, RefreshCw, Loader2, Folder, Upload, Image, Plus, X, FolderPlus } from 'lucide-react'
 import { API_BASE } from '../hooks/useApi'
 
 export default function Settings() {
@@ -12,6 +12,7 @@ export default function Settings() {
   const [testing, setTesting] = useState({})
   const [logoPreview, setLogoPreview] = useState(null)
   const [uploadingLogo, setUploadingLogo] = useState(false)
+  const [projects, setProjects] = useState([''])
   const fileInputRef = useRef(null)
 
   useEffect(() => {
@@ -20,6 +21,36 @@ export default function Settings() {
     // Try to load existing logo
     setLogoPreview('/logo.png?' + Date.now())
   }, [])
+
+  // Sync projects array with PROJECT_NAMES setting
+  useEffect(() => {
+    if (settings.PROJECT_NAMES) {
+      const names = settings.PROJECT_NAMES.split(',').map(n => n.trim()).filter(n => n)
+      setProjects(names.length > 0 ? names : [''])
+    }
+  }, [settings.PROJECT_NAMES])
+
+  // Helper functions for project management
+  const addProject = () => {
+    setProjects([...projects, ''])
+  }
+
+  const removeProject = (index) => {
+    if (projects.length > 1) {
+      const newProjects = projects.filter((_, i) => i !== index)
+      setProjects(newProjects)
+      // Update settings
+      handleChange('PROJECT_NAMES', newProjects.filter(p => p.trim()).join(', '))
+    }
+  }
+
+  const updateProject = (index, value) => {
+    const newProjects = [...projects]
+    newProjects[index] = value
+    setProjects(newProjects)
+    // Update settings
+    handleChange('PROJECT_NAMES', newProjects.filter(p => p.trim()).join(', '))
+  }
 
   const fetchSettings = async () => {
     try {
@@ -294,18 +325,45 @@ export default function Settings() {
             <TestResult service="anthropic" />
           </div>
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Project Names (comma-separated)
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              <FolderPlus className="h-4 w-4 inline mr-1" />
+              Project Names
             </label>
-            <input
-              type="text"
-              value={settings.PROJECT_NAMES || ''}
-              onChange={(e) => handleChange('PROJECT_NAMES', e.target.value)}
-              placeholder="RH, NSD, HERC, BRGO, HB"
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500"
-            />
-            <p className="text-xs text-gray-500 mt-1">
-              Folders will be created: 0 - Reports, 1 - [Project], 2 - [Project], etc. Each with subfolders: 1 - Schedules, 2 - Meetings, 3 - Deliverables
+            <div className="space-y-2">
+              {projects.map((project, index) => (
+                <div key={index} className="flex items-center gap-2">
+                  <span className="w-8 text-center text-sm font-medium text-gray-400">{index + 1}.</span>
+                  <input
+                    type="text"
+                    value={project}
+                    onChange={(e) => updateProject(index, e.target.value)}
+                    placeholder={`Project ${index + 1} name (e.g., RH, NSD, HERC)`}
+                    className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500"
+                  />
+                  {projects.length > 1 && (
+                    <button
+                      type="button"
+                      onClick={() => removeProject(index)}
+                      className="p-2 text-red-500 hover:bg-red-50 rounded-lg transition-colors"
+                      title="Remove project"
+                    >
+                      <X className="h-4 w-4" />
+                    </button>
+                  )}
+                </div>
+              ))}
+            </div>
+            <button
+              type="button"
+              onClick={addProject}
+              className="mt-3 flex items-center gap-2 px-4 py-2 text-sm text-cyan-600 hover:bg-cyan-50 rounded-lg transition-colors"
+            >
+              <Plus className="h-4 w-4" />
+              Add Another Project
+            </button>
+            <p className="text-xs text-gray-500 mt-2">
+              Folders will be created: 0 - Reports, 1 - [Project], 2 - [Project], etc.
+              <br />Each project folder will contain: 1 - Schedules, 2 - Meetings, 3 - Deliverables
             </p>
           </div>
         </div>
