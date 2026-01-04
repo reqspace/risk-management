@@ -36,7 +36,7 @@ export default function Layout({ children }) {
         { name: 'Reports', href: `/project/${projectCode}/reports`, icon: FileText },
       ]
     : [
-        { name: 'Portfolio', href: '/', icon: FolderKanban },
+        { name: 'Dashboard', href: '/', icon: LayoutDashboard },
         { name: 'All Risks', href: '/risks', icon: AlertTriangle },
         { name: 'All Tasks', href: '/tasks', icon: CheckSquare },
         { name: 'Reports', href: '/reports', icon: FileText },
@@ -127,7 +127,7 @@ export default function Layout({ children }) {
         {/* Footer */}
         <div className="absolute bottom-0 left-0 right-0 p-4 text-center border-t border-slate-700">
           <p className="text-xs text-slate-500">Risk Management</p>
-          <p className="text-xs text-slate-600 mt-1">v1.0.9</p>
+          <p className="text-xs text-slate-600 mt-1">v1.1.0</p>
         </div>
       </div>
 

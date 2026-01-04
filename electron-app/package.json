@@ -1,6 +1,6 @@
 {
   "name": "risk-management",
-  "version": "1.0.9",
+  "version": "1.1.0",
   "description": "AI-powered risk and task extraction from meetings and emails",
   "main": "src/main.js",
   "author": "reqspace",

@@ -248,6 +248,14 @@ function initializeGoogle() {
 async function signInWithGoogle() {
   if (!googleOAuth2Client) initializeGoogle();
 
+  // Kill any existing server on the port first
+  try {
+    const { execSync } = require('child_process');
+    execSync('lsof -ti:8089 | xargs kill -9 2>/dev/null || true');
+  } catch (e) {
+    // Ignore errors
+  }
+
   return new Promise((resolve) => {
     // Create a local server to handle the OAuth callback
     const server = http.createServer(async (req, res) => {
