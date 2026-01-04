@@ -1,6 +1,6 @@
 {
   "name": "risk-management",
-  "version": "1.0.8",
+  "version": "1.0.9",
   "description": "AI-powered risk and task extraction from meetings and emails",
   "main": "src/main.js",
   "author": "reqspace",
@@ -77,7 +77,8 @@
   "dependencies": {
     "@azure/msal-node": "^3.8.4",
     "electron-log": "^5.0.1",
-    "electron-updater": "^6.1.7"
+    "electron-updater": "^6.1.7",
+    "googleapis": "^169.0.0"
   },
   "devDependencies": {
     "electron": "^28.1.0",

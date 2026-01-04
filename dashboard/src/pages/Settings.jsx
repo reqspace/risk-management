@@ -15,6 +15,8 @@ export default function Settings() {
   const [projects, setProjects] = useState([''])
   const [msAccount, setMsAccount] = useState(null)
   const [msSigningIn, setMsSigningIn] = useState(false)
+  const [googleAccount, setGoogleAccount] = useState(null)
+  const [googleSigningIn, setGoogleSigningIn] = useState(false)
   const fileInputRef = useRef(null)
 
   // Check if running in Electron
@@ -25,9 +27,10 @@ export default function Settings() {
     fetchDataPath()
     // Try to load existing logo
     setLogoPreview('/logo.png?' + Date.now())
-    // Check Microsoft account status
+    // Check account statuses
     if (isElectron) {
       checkMicrosoftAccount()
+      checkGoogleAccount()
     }
   }, [])
 
@@ -67,6 +70,47 @@ export default function Settings() {
       await window.electronAPI.signOutMicrosoft()
       setMsAccount(null)
       setMessage({ type: 'success', text: 'Signed out from Microsoft' })
+    } catch (err) {
+      setMessage({ type: 'error', text: 'Sign out failed: ' + err.message })
+    }
+  }
+
+  // Check if signed in to Google
+  const checkGoogleAccount = async () => {
+    try {
+      const result = await window.electronAPI.getGoogleAccount()
+      if (result.success) {
+        setGoogleAccount(result.account)
+      }
+    } catch (err) {
+      console.error('Error checking Google account:', err)
+    }
+  }
+
+  // Sign in with Google
+  const handleGoogleSignIn = async () => {
+    setGoogleSigningIn(true)
+    try {
+      const result = await window.electronAPI.signInWithGoogle()
+      if (result.success) {
+        setGoogleAccount(result.account)
+        setMessage({ type: 'success', text: `Signed in as ${result.account.email}` })
+      } else {
+        setMessage({ type: 'error', text: result.error || 'Sign in failed' })
+      }
+    } catch (err) {
+      setMessage({ type: 'error', text: 'Sign in failed: ' + err.message })
+    } finally {
+      setGoogleSigningIn(false)
+    }
+  }
+
+  // Sign out from Google
+  const handleGoogleSignOut = async () => {
+    try {
+      await window.electronAPI.signOutGoogle()
+      setGoogleAccount(null)
+      setMessage({ type: 'success', text: 'Signed out from Google' })
     } catch (err) {
       setMessage({ type: 'error', text: 'Sign out failed: ' + err.message })
     }
@@ -632,6 +676,93 @@ export default function Settings() {
                   />
                 </div>
               </div>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Google Sign In */}
+      <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+        <div className="px-6 py-4 bg-gradient-to-r from-red-500 to-yellow-500 text-white">
+          <h2 className="text-lg font-semibold flex items-center gap-2">
+            <svg className="h-5 w-5" viewBox="0 0 24 24" fill="currentColor">
+              <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
+              <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
+              <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/>
+              <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/>
+            </svg>
+            Google Account (Gmail)
+          </h2>
+        </div>
+        <div className="p-6">
+          {isElectron ? (
+            googleAccount ? (
+              // Signed in state
+              <div className="space-y-4">
+                <div className="flex items-center justify-between p-4 bg-green-50 border border-green-200 rounded-lg">
+                  <div className="flex items-center gap-3">
+                    {googleAccount.picture ? (
+                      <img src={googleAccount.picture} alt="" className="w-10 h-10 rounded-full" />
+                    ) : (
+                      <div className="w-10 h-10 bg-red-500 rounded-full flex items-center justify-center text-white font-semibold">
+                        {googleAccount.name?.charAt(0) || googleAccount.email?.charAt(0) || 'G'}
+                      </div>
+                    )}
+                    <div>
+                      <p className="font-medium text-gray-900">{googleAccount.name || 'Google Account'}</p>
+                      <p className="text-sm text-gray-500">{googleAccount.email}</p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <CheckCircle className="h-5 w-5 text-green-500" />
+                    <span className="text-sm text-green-700 font-medium">Connected</span>
+                  </div>
+                </div>
+                <div className="flex items-center justify-between">
+                  <p className="text-sm text-gray-600">
+                    Access to: Gmail (read & send)
+                  </p>
+                  <button
+                    onClick={handleGoogleSignOut}
+                    className="px-4 py-2 text-sm text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                  >
+                    Sign Out
+                  </button>
+                </div>
+              </div>
+            ) : (
+              // Not signed in state
+              <div className="space-y-4">
+                <p className="text-gray-600">
+                  Sign in with your Google account to enable Gmail integration for reading and sending emails.
+                </p>
+                <button
+                  onClick={handleGoogleSignIn}
+                  disabled={googleSigningIn}
+                  className="flex items-center gap-3 px-6 py-3 bg-white border-2 border-gray-200 hover:bg-gray-50 text-gray-700 rounded-lg transition-colors disabled:opacity-50"
+                >
+                  {googleSigningIn ? (
+                    <Loader2 className="h-5 w-5 animate-spin" />
+                  ) : (
+                    <svg className="h-5 w-5" viewBox="0 0 24 24">
+                      <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
+                      <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
+                      <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/>
+                      <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/>
+                    </svg>
+                  )}
+                  {googleSigningIn ? 'Signing in...' : 'Sign in with Google'}
+                </button>
+                <p className="text-xs text-gray-500">
+                  A browser window will open to complete sign-in securely with Google.
+                </p>
+              </div>
+            )
+          ) : (
+            <div className="p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
+              <p className="text-sm text-yellow-800">
+                Sign in with Google is only available in the desktop app.
+              </p>
             </div>
           )}
         </div>

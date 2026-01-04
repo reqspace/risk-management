@@ -6,6 +6,7 @@ const fs = require('fs');
 const { spawn } = require('child_process');
 const http = require('http');
 const { PublicClientApplication } = require('@azure/msal-node');
+const { google } = require('googleapis');
 
 // Configure logging
 log.transports.file.level = 'info';
@@ -64,20 +65,30 @@ async function signInWithMicrosoft() {
     }
 
     // Interactive auth with device code flow (works well for desktop apps)
+    // Copy code to clipboard immediately
+    const { clipboard } = require('electron');
+
     const deviceCodeRequest = {
       scopes: MSAL_SCOPES,
       deviceCodeCallback: (response) => {
-        // Show dialog to user with the code
+        // Copy code to clipboard immediately
+        clipboard.writeText(response.userCode);
+        log.info('Device code:', response.userCode);
+
+        // Show dialog to user with the code - keep showing until they act
         dialog.showMessageBox(mainWindow, {
           type: 'info',
           title: 'Sign in with Microsoft',
-          message: 'Sign in required',
-          detail: `To sign in:\n\n1. Go to: ${response.verificationUri}\n2. Enter code: ${response.userCode}\n\nThe code has been copied to your clipboard.`,
-          buttons: ['Open Browser', 'Cancel']
+          message: `Your code: ${response.userCode}`,
+          detail: `This code has been copied to your clipboard.\n\n1. Click "Open Browser" below\n2. Paste the code: ${response.userCode}\n3. Sign in with your Microsoft account\n4. Come back here - you'll be signed in automatically`,
+          buttons: ['Open Browser', 'Copy Code Again', 'Cancel']
         }).then((result) => {
           if (result.response === 0) {
-            // Copy code to clipboard and open browser
-            require('electron').clipboard.writeText(response.userCode);
+            // Open browser
+            shell.openExternal(response.verificationUri);
+          } else if (result.response === 1) {
+            // Copy code again
+            clipboard.writeText(response.userCode);
             shell.openExternal(response.verificationUri);
           }
         });
@@ -201,6 +212,167 @@ async function refreshMicrosoftToken() {
     };
   } catch (error) {
     log.error('Token refresh error:', error);
+    return { success: false, error: error.message };
+  }
+}
+
+// ============================================
+// Google OAuth Configuration
+// ============================================
+const GOOGLE_CONFIG = {
+  clientId: '10018350263-leqmet8aekiu05b42bq8qk6el7r87fr6.apps.googleusercontent.com',
+  clientSecret: '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',
+  redirectUri: 'http://localhost:8089/oauth2callback'
+};
+
+const GOOGLE_SCOPES = [
+  'https://www.googleapis.com/auth/gmail.readonly',
+  'https://www.googleapis.com/auth/gmail.send',
+  'https://www.googleapis.com/auth/userinfo.email',
+  'https://www.googleapis.com/auth/userinfo.profile'
+];
+
+let googleOAuth2Client = null;
+
+// Initialize Google OAuth client
+function initializeGoogle() {
+  googleOAuth2Client = new google.auth.OAuth2(
+    GOOGLE_CONFIG.clientId,
+    GOOGLE_CONFIG.clientSecret,
+    GOOGLE_CONFIG.redirectUri
+  );
+  log.info('Google OAuth initialized');
+}
+
+// Sign in with Google
+async function signInWithGoogle() {
+  if (!googleOAuth2Client) initializeGoogle();
+
+  return new Promise((resolve) => {
+    // Create a local server to handle the OAuth callback
+    const server = http.createServer(async (req, res) => {
+      try {
+        const url = new URL(req.url, 'http://localhost:8089');
+        if (url.pathname === '/oauth2callback') {
+          const code = url.searchParams.get('code');
+
+          if (code) {
+            // Exchange code for tokens
+            const { tokens } = await googleOAuth2Client.getToken(code);
+            googleOAuth2Client.setCredentials(tokens);
+
+            // Get user info
+            const oauth2 = google.oauth2({ version: 'v2', auth: googleOAuth2Client });
+            const userInfo = await oauth2.userinfo.get();
+
+            // Save tokens
+            await saveGoogleTokens(tokens, userInfo.data);
+
+            res.writeHead(200, { 'Content-Type': 'text/html' });
+            res.end(`
+              <html>
+                <body style="font-family: -apple-system, BlinkMacSystemFont, sans-serif; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; background: #f0f0f0;">
+                  <div style="text-align: center; padding: 40px; background: white; border-radius: 12px; box-shadow: 0 2px 10px rgba(0,0,0,0.1);">
+                    <h1 style="color: #4285f4;">✓ Signed in successfully!</h1>
+                    <p>You can close this window and return to the app.</p>
+                  </div>
+                </body>
+              </html>
+            `);
+
+            server.close();
+            resolve({
+              success: true,
+              account: {
+                email: userInfo.data.email,
+                name: userInfo.data.name,
+                picture: userInfo.data.picture
+              }
+            });
+          } else {
+            res.writeHead(400, { 'Content-Type': 'text/html' });
+            res.end('<h1>Error: No authorization code received</h1>');
+            server.close();
+            resolve({ success: false, error: 'No authorization code' });
+          }
+        }
+      } catch (error) {
+        log.error('Google OAuth callback error:', error);
+        res.writeHead(500, { 'Content-Type': 'text/html' });
+        res.end(`<h1>Error: ${error.message}</h1>`);
+        server.close();
+        resolve({ success: false, error: error.message });
+      }
+    });
+
+    server.listen(8089, () => {
+      log.info('Google OAuth callback server listening on port 8089');
+
+      // Generate auth URL and open in browser
+      const authUrl = googleOAuth2Client.generateAuthUrl({
+        access_type: 'offline',
+        scope: GOOGLE_SCOPES,
+        prompt: 'consent'
+      });
+
+      shell.openExternal(authUrl);
+    });
+
+    // Timeout after 5 minutes
+    setTimeout(() => {
+      server.close();
+      resolve({ success: false, error: 'Sign-in timeout' });
+    }, 300000);
+  });
+}
+
+// Save Google tokens
+async function saveGoogleTokens(tokens, userInfo) {
+  const configPath = path.join(getAppConfigPath(), 'google-tokens.json');
+  const tokenData = {
+    accessToken: tokens.access_token,
+    refreshToken: tokens.refresh_token,
+    expiryDate: tokens.expiry_date,
+    account: {
+      email: userInfo.email,
+      name: userInfo.name,
+      picture: userInfo.picture
+    }
+  };
+  fs.writeFileSync(configPath, JSON.stringify(tokenData, null, 2));
+  log.info('Google tokens saved for:', userInfo.email);
+}
+
+// Get current Google account
+async function getGoogleAccount() {
+  const configPath = path.join(getAppConfigPath(), 'google-tokens.json');
+  if (fs.existsSync(configPath)) {
+    try {
+      const tokenData = JSON.parse(fs.readFileSync(configPath, 'utf8'));
+      return {
+        success: true,
+        account: tokenData.account,
+        isExpired: tokenData.expiryDate && Date.now() > tokenData.expiryDate
+      };
+    } catch (e) {
+      return { success: false };
+    }
+  }
+  return { success: false };
+}
+
+// Sign out from Google
+async function signOutGoogle() {
+  try {
+    const configPath = path.join(getAppConfigPath(), 'google-tokens.json');
+    if (fs.existsSync(configPath)) {
+      fs.unlinkSync(configPath);
+    }
+    googleOAuth2Client = null;
+    log.info('Google sign-out complete');
+    return { success: true };
+  } catch (error) {
+    log.error('Google sign-out error:', error);
     return { success: false, error: error.message };
   }
 }
@@ -661,6 +833,19 @@ ipcMain.handle('microsoft-refresh-token', async () => {
 
 ipcMain.handle('get-app-version', () => {
   return app.getVersion();
+});
+
+// IPC Handlers for Google Auth
+ipcMain.handle('google-sign-in', async () => {
+  return await signInWithGoogle();
+});
+
+ipcMain.handle('google-sign-out', async () => {
+  return await signOutGoogle();
+});
+
+ipcMain.handle('google-get-account', async () => {
+  return await getGoogleAccount();
 });
 
 // App lifecycle
