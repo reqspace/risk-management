@@ -11,7 +11,8 @@ import {
   Building,
   Zap,
   Battery,
-  Shield
+  Shield,
+  RefreshCw
 } from 'lucide-react'
 
 // Brand Colors (customize during setup)
@@ -199,7 +200,7 @@ function PortfolioSummary({ projects, onNavigate }) {
 
 export default function Portfolio() {
   const navigate = useNavigate()
-  const { data, loading, error } = useApi('/api/portfolio')
+  const { data, loading, error, refetch } = useApi('/api/portfolio')
 
   const projects = data?.projects || []
 
@@ -215,15 +216,31 @@ export default function Portfolio() {
     return (
       <div className="bg-red-50 text-red-700 p-4 rounded-lg">
         Error loading portfolio: {error}
+        <button
+          onClick={refetch}
+          className="ml-4 px-3 py-1 bg-red-100 hover:bg-red-200 rounded-lg text-sm"
+        >
+          Retry
+        </button>
       </div>
     )
   }
 
   return (
     <div>
-      <div className="mb-6">
-        <h1 className="text-2xl font-bold text-gray-900">Project Portfolio</h1>
-        <p className="text-gray-500">Risk Management Dashboard</p>
+      <div className="flex items-center justify-between mb-6">
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900">Project Portfolio</h1>
+          <p className="text-gray-500">Risk Management Dashboard</p>
+        </div>
+        <button
+          onClick={refetch}
+          disabled={loading}
+          className="flex items-center gap-2 px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg transition-colors disabled:opacity-50"
+        >
+          <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
+          Refresh
+        </button>
       </div>
 
       <PortfolioSummary projects={projects} onNavigate={navigate} />

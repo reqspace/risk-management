@@ -1,5 +1,5 @@
-import { useState, useEffect } from 'react'
-import { Save, Key, Mail, Cloud, FolderOpen, ExternalLink, CheckCircle, AlertCircle } from 'lucide-react'
+import { useState, useEffect, useRef } from 'react'
+import { Save, Key, Mail, Cloud, FolderOpen, ExternalLink, CheckCircle, AlertCircle, RefreshCw, Loader2, Folder, Upload, Image } from 'lucide-react'
 import { API_BASE } from '../hooks/useApi'
 
 export default function Settings() {
@@ -7,9 +7,18 @@ export default function Settings() {
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [message, setMessage] = useState(null)
+  const [dataPath, setDataPath] = useState(null)
+  const [testResults, setTestResults] = useState({})
+  const [testing, setTesting] = useState({})
+  const [logoPreview, setLogoPreview] = useState(null)
+  const [uploadingLogo, setUploadingLogo] = useState(false)
+  const fileInputRef = useRef(null)
 
   useEffect(() => {
     fetchSettings()
+    fetchDataPath()
+    // Try to load existing logo
+    setLogoPreview('/logo.png?' + Date.now())
   }, [])
 
   const fetchSettings = async () => {
@@ -26,8 +35,22 @@ export default function Settings() {
     }
   }
 
+  const fetchDataPath = async () => {
+    try {
+      const response = await fetch(`${API_BASE}/api/data-path`)
+      const data = await response.json()
+      if (data.success) {
+        setDataPath(data)
+      }
+    } catch (err) {
+      console.error('Failed to get data path:', err)
+    }
+  }
+
   const handleChange = (key, value) => {
     setSettings(prev => ({ ...prev, [key]: value }))
+    // Clear test result when value changes
+    setTestResults(prev => ({ ...prev, [key]: null }))
   }
 
   const handleSave = async () => {
@@ -43,6 +66,7 @@ export default function Settings() {
       if (data.success) {
         setMessage({ type: 'success', text: data.message })
         fetchSettings() // Reload to get masked values
+        fetchDataPath() // Refresh paths
       } else {
         setMessage({ type: 'error', text: data.error || 'Failed to save' })
       }
@@ -51,6 +75,86 @@ export default function Settings() {
     } finally {
       setSaving(false)
     }
+  }
+
+  const testConnection = async (service) => {
+    setTesting(prev => ({ ...prev, [service]: true }))
+    try {
+      const response = await fetch(`${API_BASE}/api/test-connection`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ service })
+      })
+      const data = await response.json()
+      setTestResults(prev => ({ ...prev, [service]: data }))
+    } catch (err) {
+      setTestResults(prev => ({ ...prev, [service]: { success: false, error: err.message } }))
+    } finally {
+      setTesting(prev => ({ ...prev, [service]: false }))
+    }
+  }
+
+  const handleLogoUpload = async (event) => {
+    const file = event.target.files[0]
+    if (!file) return
+
+    // Validate file type
+    if (!file.type.startsWith('image/')) {
+      setMessage({ type: 'error', text: 'Please select an image file (PNG, JPG, etc.)' })
+      return
+    }
+
+    // Show preview immediately
+    const reader = new FileReader()
+    reader.onload = (e) => setLogoPreview(e.target.result)
+    reader.readAsDataURL(file)
+
+    // Upload to server
+    setUploadingLogo(true)
+    try {
+      const formData = new FormData()
+      formData.append('logo', file)
+
+      const response = await fetch(`${API_BASE}/api/upload-logo`, {
+        method: 'POST',
+        body: formData
+      })
+      const data = await response.json()
+
+      if (data.success) {
+        setMessage({ type: 'success', text: 'Logo uploaded successfully!' })
+        // Force refresh logo in other components
+        setLogoPreview(`/logo.png?${Date.now()}`)
+      } else {
+        setMessage({ type: 'error', text: data.error || 'Failed to upload logo' })
+      }
+    } catch (err) {
+      setMessage({ type: 'error', text: 'Failed to upload logo: ' + err.message })
+    } finally {
+      setUploadingLogo(false)
+    }
+  }
+
+  const TestButton = ({ service, label }) => (
+    <button
+      onClick={() => testConnection(service)}
+      disabled={testing[service]}
+      className="flex items-center gap-1 px-3 py-1 text-sm bg-gray-100 hover:bg-gray-200 rounded-lg disabled:opacity-50"
+    >
+      {testing[service] ? <Loader2 className="h-3 w-3 animate-spin" /> : <RefreshCw className="h-3 w-3" />}
+      Test
+    </button>
+  )
+
+  const TestResult = ({ service }) => {
+    const result = testResults[service]
+    if (!result) return null
+    return (
+      <div className={`flex items-center gap-1 text-sm mt-1 ${result.success ? 'text-green-600' : 'text-red-600'}`}>
+        {result.success ? <CheckCircle className="h-4 w-4" /> : <AlertCircle className="h-4 w-4" />}
+        {result.message || result.error}
+      </div>
+    )
   }
 
   if (loading) {
@@ -84,6 +188,72 @@ export default function Settings() {
         </div>
       )}
 
+      {/* Data Location */}
+      {dataPath && (
+        <div className="bg-blue-50 border border-blue-200 rounded-xl p-4">
+          <h3 className="font-semibold text-blue-800 flex items-center gap-2 mb-2">
+            <Folder className="h-5 w-5" />
+            Data Location
+          </h3>
+          <p className="text-sm text-blue-700 font-mono break-all">{dataPath.path}</p>
+          <p className="text-xs text-blue-600 mt-2">
+            Drop transcript files into project folders under: <span className="font-mono">{dataPath.projects_path}</span>
+          </p>
+        </div>
+      )}
+
+      {/* Logo Upload */}
+      <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+        <div className="px-6 py-4 bg-gradient-to-r from-slate-600 to-slate-700 text-white">
+          <h2 className="text-lg font-semibold flex items-center gap-2">
+            <Image className="h-5 w-5" />
+            Company Logo
+          </h2>
+        </div>
+        <div className="p-6">
+          <div className="flex items-center gap-6">
+            <div className="flex-shrink-0">
+              {logoPreview ? (
+                <img
+                  src={logoPreview}
+                  alt="Logo preview"
+                  className="h-16 w-auto max-w-32 object-contain bg-gray-100 rounded-lg p-2"
+                  onError={() => setLogoPreview(null)}
+                />
+              ) : (
+                <div className="h-16 w-32 bg-gray-100 rounded-lg flex items-center justify-center text-gray-400">
+                  <Image className="h-8 w-8" />
+                </div>
+              )}
+            </div>
+            <div className="flex-1">
+              <input
+                type="file"
+                ref={fileInputRef}
+                onChange={handleLogoUpload}
+                accept="image/*"
+                className="hidden"
+              />
+              <button
+                onClick={() => fileInputRef.current?.click()}
+                disabled={uploadingLogo}
+                className="flex items-center gap-2 px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg transition-colors disabled:opacity-50"
+              >
+                {uploadingLogo ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <Upload className="h-4 w-4" />
+                )}
+                {uploadingLogo ? 'Uploading...' : 'Upload Logo'}
+              </button>
+              <p className="text-xs text-gray-500 mt-2">
+                Recommended: PNG with transparent background, 200x50px or similar aspect ratio
+              </p>
+            </div>
+          </div>
+        </div>
+      </div>
+
       {/* Required Settings */}
       <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
         <div className="px-6 py-4 bg-gradient-to-r from-cyan-600 to-cyan-700 text-white">
@@ -94,13 +264,16 @@ export default function Settings() {
         </div>
         <div className="p-6 space-y-4">
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Anthropic API Key
-              <a href="https://console.anthropic.com/" target="_blank" rel="noopener noreferrer"
-                 className="ml-2 text-cyan-600 hover:text-cyan-700">
-                <ExternalLink className="h-3 w-3 inline" /> Get one
-              </a>
-            </label>
+            <div className="flex items-center justify-between mb-1">
+              <label className="block text-sm font-medium text-gray-700">
+                Anthropic API Key
+                <a href="https://console.anthropic.com/" target="_blank" rel="noopener noreferrer"
+                   className="ml-2 text-cyan-600 hover:text-cyan-700">
+                  <ExternalLink className="h-3 w-3 inline" /> Get one
+                </a>
+              </label>
+              <TestButton service="anthropic" />
+            </div>
             <input
               type="password"
               value={settings.ANTHROPIC_API_KEY || ''}
@@ -108,6 +281,7 @@ export default function Settings() {
               placeholder="sk-ant-..."
               className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500"
             />
+            <TestResult service="anthropic" />
           </div>
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">
@@ -121,7 +295,7 @@ export default function Settings() {
               className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500"
             />
             <p className="text-xs text-gray-500 mt-1">
-              Folders will be created: 0 - Reports, 1 - [Project], 2 - [Project], etc.
+              Folders will be created: 0 - Reports, 1 - [Project], 2 - [Project], etc. Each with subfolders: 1 - Schedules, 2 - Meetings, 3 - Deliverables
             </p>
           </div>
         </div>
@@ -132,25 +306,32 @@ export default function Settings() {
         <div className="px-6 py-4 bg-gradient-to-r from-purple-600 to-purple-700 text-white">
           <h2 className="text-lg font-semibold flex items-center gap-2">
             <Cloud className="h-5 w-5" />
-            Remote Access (ngrok)
+            Remote Access (ngrok) - For Power Automate
           </h2>
         </div>
         <div className="p-6">
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              ngrok Auth Token
-              <a href="https://dashboard.ngrok.com/get-started/your-authtoken" target="_blank" rel="noopener noreferrer"
-                 className="ml-2 text-cyan-600 hover:text-cyan-700">
-                <ExternalLink className="h-3 w-3 inline" /> Get token
-              </a>
-            </label>
+            <div className="flex items-center justify-between mb-1">
+              <label className="block text-sm font-medium text-gray-700">
+                ngrok Auth Token
+                <a href="https://dashboard.ngrok.com/get-started/your-authtoken" target="_blank" rel="noopener noreferrer"
+                   className="ml-2 text-cyan-600 hover:text-cyan-700">
+                  <ExternalLink className="h-3 w-3 inline" /> Get token
+                </a>
+              </label>
+              <TestButton service="ngrok" />
+            </div>
             <input
               type="password"
               value={settings.NGROK_AUTH_TOKEN || ''}
               onChange={(e) => handleChange('NGROK_AUTH_TOKEN', e.target.value)}
-              placeholder="Optional - for Power Automate integration"
+              placeholder="Optional - enables Power Automate to send files"
               className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500"
             />
+            <TestResult service="ngrok" />
+            <p className="text-xs text-gray-500 mt-2">
+              Required for Power Automate integration. After setting this, run ngrok manually or the app will start it automatically.
+            </p>
           </div>
         </div>
       </div>
@@ -163,52 +344,58 @@ export default function Settings() {
             Email Reports (Daily Digest)
           </h2>
         </div>
-        <div className="p-6 grid grid-cols-2 gap-4">
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">SMTP Server</label>
-            <input
-              type="text"
-              value={settings.SMTP_SERVER || ''}
-              onChange={(e) => handleChange('SMTP_SERVER', e.target.value)}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500"
-            />
+        <div className="p-6 space-y-4">
+          <div className="flex justify-end">
+            <TestButton service="email" label="Test Email Connection" />
           </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">SMTP Port</label>
-            <input
-              type="text"
-              value={settings.SMTP_PORT || ''}
-              onChange={(e) => handleChange('SMTP_PORT', e.target.value)}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500"
-            />
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">From Email</label>
-            <input
-              type="email"
-              value={settings.EMAIL_FROM || ''}
-              onChange={(e) => handleChange('EMAIL_FROM', e.target.value)}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500"
-            />
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">To Email(s)</label>
-            <input
-              type="text"
-              value={settings.EMAIL_TO || ''}
-              onChange={(e) => handleChange('EMAIL_TO', e.target.value)}
-              placeholder="recipient@example.com"
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500"
-            />
-          </div>
-          <div className="col-span-2">
-            <label className="block text-sm font-medium text-gray-700 mb-1">Email Password / App Password</label>
-            <input
-              type="password"
-              value={settings.EMAIL_PASSWORD || ''}
-              onChange={(e) => handleChange('EMAIL_PASSWORD', e.target.value)}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500"
-            />
+          <TestResult service="email" />
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">SMTP Server</label>
+              <input
+                type="text"
+                value={settings.SMTP_SERVER || ''}
+                onChange={(e) => handleChange('SMTP_SERVER', e.target.value)}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">SMTP Port</label>
+              <input
+                type="text"
+                value={settings.SMTP_PORT || ''}
+                onChange={(e) => handleChange('SMTP_PORT', e.target.value)}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">From Email</label>
+              <input
+                type="email"
+                value={settings.EMAIL_FROM || ''}
+                onChange={(e) => handleChange('EMAIL_FROM', e.target.value)}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">To Email(s)</label>
+              <input
+                type="text"
+                value={settings.EMAIL_TO || ''}
+                onChange={(e) => handleChange('EMAIL_TO', e.target.value)}
+                placeholder="recipient@example.com"
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500"
+              />
+            </div>
+            <div className="col-span-2">
+              <label className="block text-sm font-medium text-gray-700 mb-1">Email Password / App Password</label>
+              <input
+                type="password"
+                value={settings.EMAIL_PASSWORD || ''}
+                onChange={(e) => handleChange('EMAIL_PASSWORD', e.target.value)}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500"
+              />
+            </div>
           </div>
         </div>
       </div>
@@ -221,48 +408,54 @@ export default function Settings() {
             Microsoft Graph API (Outlook Calendar)
           </h2>
         </div>
-        <div className="p-6 grid grid-cols-2 gap-4">
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Client ID
-              <a href="https://portal.azure.com/#blade/Microsoft_AAD_RegisteredApps/ApplicationsListBlade"
-                 target="_blank" rel="noopener noreferrer" className="ml-2 text-cyan-600 hover:text-cyan-700">
-                <ExternalLink className="h-3 w-3 inline" /> Azure Portal
-              </a>
-            </label>
-            <input
-              type="text"
-              value={settings.MS_CLIENT_ID || ''}
-              onChange={(e) => handleChange('MS_CLIENT_ID', e.target.value)}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500"
-            />
+        <div className="p-6 space-y-4">
+          <div className="flex justify-end">
+            <TestButton service="microsoft" label="Test Microsoft Connection" />
           </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Tenant ID</label>
-            <input
-              type="text"
-              value={settings.MS_TENANT_ID || ''}
-              onChange={(e) => handleChange('MS_TENANT_ID', e.target.value)}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500"
-            />
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Client Secret</label>
-            <input
-              type="password"
-              value={settings.MS_CLIENT_SECRET || ''}
-              onChange={(e) => handleChange('MS_CLIENT_SECRET', e.target.value)}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500"
-            />
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">User Email</label>
-            <input
-              type="email"
-              value={settings.MS_USER_EMAIL || ''}
-              onChange={(e) => handleChange('MS_USER_EMAIL', e.target.value)}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500"
-            />
+          <TestResult service="microsoft" />
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Client ID
+                <a href="https://portal.azure.com/#blade/Microsoft_AAD_RegisteredApps/ApplicationsListBlade"
+                   target="_blank" rel="noopener noreferrer" className="ml-2 text-cyan-600 hover:text-cyan-700">
+                  <ExternalLink className="h-3 w-3 inline" /> Azure Portal
+                </a>
+              </label>
+              <input
+                type="text"
+                value={settings.MS_CLIENT_ID || ''}
+                onChange={(e) => handleChange('MS_CLIENT_ID', e.target.value)}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Tenant ID</label>
+              <input
+                type="text"
+                value={settings.MS_TENANT_ID || ''}
+                onChange={(e) => handleChange('MS_TENANT_ID', e.target.value)}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Client Secret</label>
+              <input
+                type="password"
+                value={settings.MS_CLIENT_SECRET || ''}
+                onChange={(e) => handleChange('MS_CLIENT_SECRET', e.target.value)}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">User Email</label>
+              <input
+                type="email"
+                value={settings.MS_USER_EMAIL || ''}
+                onChange={(e) => handleChange('MS_USER_EMAIL', e.target.value)}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500"
+              />
+            </div>
           </div>
         </div>
       </div>
@@ -307,7 +500,7 @@ export default function Settings() {
       </div>
 
       {/* Save Button at bottom */}
-      <div className="flex justify-end">
+      <div className="flex justify-end pb-8">
         <button
           onClick={handleSave}
           disabled={saving}

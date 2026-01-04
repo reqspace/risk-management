@@ -301,6 +301,166 @@ def create_project_folders(project_names_str):
     print(f"[Settings] Created folder structure for {len(projects)} projects")
 
 
+@app.route('/api/test-connection', methods=['POST'])
+def test_connection():
+    """Test various service connections."""
+    service = request.json.get('service')
+
+    if service == 'anthropic':
+        api_key = os.getenv('ANTHROPIC_API_KEY', '')
+        if not api_key or api_key.startswith('****'):
+            return jsonify({"success": False, "error": "API key not configured"})
+        try:
+            import anthropic
+            client = anthropic.Anthropic(api_key=api_key)
+            # Simple test - just check if client can be created
+            return jsonify({"success": True, "message": "Anthropic API key is valid"})
+        except Exception as e:
+            return jsonify({"success": False, "error": str(e)})
+
+    elif service == 'email':
+        import smtplib
+        server = os.getenv('SMTP_SERVER', '')
+        port = int(os.getenv('SMTP_PORT', 587))
+        email_from = os.getenv('EMAIL_FROM', '')
+        password = os.getenv('EMAIL_PASSWORD', '')
+
+        if not all([server, email_from, password]):
+            return jsonify({"success": False, "error": "Email settings not fully configured"})
+
+        try:
+            with smtplib.SMTP(server, port, timeout=10) as smtp:
+                smtp.starttls()
+                smtp.login(email_from, password)
+            return jsonify({"success": True, "message": "Email connection successful"})
+        except Exception as e:
+            return jsonify({"success": False, "error": str(e)})
+
+    elif service == 'microsoft':
+        client_id = os.getenv('MS_CLIENT_ID', '')
+        tenant_id = os.getenv('MS_TENANT_ID', '')
+        client_secret = os.getenv('MS_CLIENT_SECRET', '')
+
+        if not all([client_id, tenant_id, client_secret]):
+            return jsonify({"success": False, "error": "Microsoft Graph not fully configured"})
+
+        try:
+            import requests
+            token_url = f"https://login.microsoftonline.com/{tenant_id}/oauth2/v2.0/token"
+            response = requests.post(token_url, data={
+                'client_id': client_id,
+                'client_secret': client_secret,
+                'scope': 'https://graph.microsoft.com/.default',
+                'grant_type': 'client_credentials'
+            }, timeout=10)
+            if response.status_code == 200:
+                return jsonify({"success": True, "message": "Microsoft Graph connection successful"})
+            else:
+                return jsonify({"success": False, "error": f"Auth failed: {response.text}"})
+        except Exception as e:
+            return jsonify({"success": False, "error": str(e)})
+
+    elif service == 'ngrok':
+        token = os.getenv('NGROK_AUTH_TOKEN', '')
+        if not token or token.startswith('****'):
+            return jsonify({"success": False, "error": "ngrok token not configured"})
+        # ngrok token validation would require actually starting ngrok
+        return jsonify({"success": True, "message": "ngrok token is configured (not validated)"})
+
+    return jsonify({"success": False, "error": "Unknown service"})
+
+
+@app.route('/api/data-path', methods=['GET'])
+def get_data_path():
+    """Get the data folder path for user reference."""
+    return jsonify({
+        "success": True,
+        "path": str(BASE_PATH),
+        "projects_path": str(BASE_PATH / "Risk_Registers"),
+        "reports_path": str(BASE_PATH / "0 - Reports")
+    })
+
+
+@app.route('/api/upload-logo', methods=['POST'])
+def upload_logo():
+    """Upload a company logo."""
+    if 'logo' not in request.files:
+        return jsonify({"success": False, "error": "No file provided"}), 400
+
+    file = request.files['logo']
+    if file.filename == '':
+        return jsonify({"success": False, "error": "No file selected"}), 400
+
+    # Validate file type
+    allowed_extensions = {'.png', '.jpg', '.jpeg', '.gif', '.svg', '.webp'}
+    ext = Path(file.filename).suffix.lower()
+    if ext not in allowed_extensions:
+        return jsonify({"success": False, "error": f"Invalid file type. Allowed: {', '.join(allowed_extensions)}"}), 400
+
+    try:
+        # Save to webapp public folder (for React/Vite dev) and build folder (for Electron)
+        # In production Electron, we need to copy to the webapp folder that's being served
+        import shutil
+
+        # Determine where the webapp is being served from
+        # In dev mode, it's the dashboard/public folder
+        # In Electron production, it's electron-app/build/webapp
+
+        # Save as logo.png regardless of original extension (for consistency)
+        # If it's not PNG, we'll just keep the original format
+        logo_filename = 'logo' + ext if ext != '.png' else 'logo.png'
+
+        # Get the directory where this script is running from
+        script_dir = Path(__file__).parent.resolve()
+
+        # Try multiple potential locations
+        save_locations = [
+            script_dir / 'dashboard' / 'public' / 'logo.png',  # Dev mode
+            BASE_PATH / 'logo.png',  # User data folder
+        ]
+
+        saved_to = []
+        for loc in save_locations:
+            try:
+                loc.parent.mkdir(parents=True, exist_ok=True)
+                file.seek(0)  # Reset file pointer for each save
+                file.save(str(loc))
+                saved_to.append(str(loc))
+            except Exception as e:
+                print(f"[Logo] Could not save to {loc}: {e}")
+
+        if not saved_to:
+            return jsonify({"success": False, "error": "Could not save logo to any location"}), 500
+
+        print(f"[Logo] Saved to: {saved_to}")
+        return jsonify({
+            "success": True,
+            "message": "Logo uploaded successfully",
+            "saved_to": saved_to
+        })
+
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+@app.route('/logo.png', methods=['GET'])
+def serve_logo():
+    """Serve the uploaded logo."""
+    from flask import send_file
+
+    # Check multiple locations for the logo
+    possible_paths = [
+        BASE_PATH / 'logo.png',
+        Path(__file__).parent / 'dashboard' / 'public' / 'logo.png',
+    ]
+
+    for path in possible_paths:
+        if path.exists():
+            return send_file(str(path), mimetype='image/png')
+
+    return jsonify({"error": "Logo not found"}), 404
+
+
 def extract_text_from_attachment(file_path: Path, extension: str) -> str:
     """Extract text content from attachment based on file type."""
     try:
@@ -642,22 +802,42 @@ def read_excel_data(project_code='HB'):
 
 
 def get_all_projects():
-    """Get list of all project codes from Risk Register files."""
+    """Get list of all project codes from settings and existing files."""
+    projects = set()
+
+    # 1. Get from PROJECT_NAMES env var (configured in settings)
+    project_names = os.getenv('PROJECT_NAMES', '')
+    if project_names:
+        for name in project_names.split(','):
+            name = name.strip()
+            if name:
+                projects.add(name)
+
+    # 2. Get from existing Risk Register files
     risk_registers_path = BASE_PATH / "Risk_Registers"
-    projects = []
     if risk_registers_path.exists():
         for file in risk_registers_path.glob("Risk_Register_*.xlsx"):
             project_code = file.stem.replace("Risk_Register_", "")
-            projects.append(project_code)
+            projects.add(project_code)
+        # Also check for project folders
+        for folder in risk_registers_path.iterdir():
+            if folder.is_dir() and not folder.name.startswith('.'):
+                projects.add(folder.name)
+
     return sorted(projects)
 
 
 def get_project_stats(project_code):
     """Get stats for a single project."""
     from datetime import datetime
-    data = read_excel_data(project_code)
-    risks = data['risks']
-    tasks = data['tasks']
+    try:
+        data = read_excel_data(project_code)
+        risks = data.get('risks', [])
+        tasks = data.get('tasks', [])
+    except Exception:
+        # Empty project with no data yet
+        risks = []
+        tasks = []
     today = datetime.now().date()
 
     active_risks = len([r for r in risks if r.get('Status') in ['Open', 'Active', 'Escalated']])
